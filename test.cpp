@@ -1,5 +1,6 @@
-#include <iostream>
 #include <cassert>
+#include <iostream>
+
 #include "closure.h"
 
 void TestArg() {
@@ -32,10 +33,36 @@ void TestArg() {
 
 std::size_t sum(const int& v1, double v2, int v3, int v4) { return v1 + v2 + v3 + v4; }
 
+int forwarding_test(std::unique_ptr<int> p) { return *p.get(); }
+
+int calculate_sum(std::string exp) {
+  int ans = 0;
+  size_t pos = 0;
+  int cur_num = 0;
+  for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
+    if (*iter == '+') {
+      assert(iter != exp.begin());
+      ans += cur_num;
+      cur_num = 0;
+    } else {
+      assert('0' <= *iter && *iter <= '9');
+      cur_num = cur_num * 10 + *iter - '0';
+    }
+  }
+  ans += cur_num;
+  return ans;
+}
+
 void TestClosure() {
-  auto closure1 = NewClosure(sum, 1);
-  assert(closure1->Run(2, 3, 4) == 10);
-  delete closure1;
+  Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
+  assert(closure1.Run(2, 3, 4) == 10);
+
+  Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
+  assert(closure2.Run(std::make_unique<int>(10)) == 10);
+
+  std::string exp = "11+12+13";
+  assert(MakeClosure(calculate_sum, std::move(exp)).Run() == 36);
+  assert(exp.size() == 0);
 }
 
 int main() {
