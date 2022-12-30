@@ -7,55 +7,156 @@
 #include <tuple>
 #include <type_traits>
 
-template <class... Tp>
+template <class... Tps>
 struct ArgList {};
+
+template <class, class>
+struct Concat;
+
+template <class... Tps1, class... Tps2>
+struct Concat<ArgList<Tps1...>, ArgList<Tps2...>> {
+  using type = ArgList<Tps1..., Tps2...>;
+};
+
+template <size_t... I1, size_t... I2>
+struct Concat<std::index_sequence<I1...>, std::index_sequence<I2...>> {
+  using type = std::index_sequence<I1..., I2...>;
+};
+
+template <class L1, class L2>
+using ConcatT = typename Concat<L1, L2>::type;
+
+namespace placeholders {
+
+template <size_t>
+struct PH {};
+
+template <class>
+struct HasPlaceHolder;
+
+template <>
+struct HasPlaceHolder<ArgList<>> : std::false_type {};
+
+template <size_t I, class... Tps>
+struct HasPlaceHolder<ArgList<PH<I>, Tps...>> : std::true_type {};
+
+template <class F, class... Os>
+struct HasPlaceHolder<ArgList<F, Os...>> : HasPlaceHolder<ArgList<Os...>> {};
+
+template <class... Tps>
+constexpr auto HasPlaceHolderV = HasPlaceHolder<ArgList<Tps...>>{};
+
+template <class... Tps>
+constexpr auto HasPlaceHolderV<ArgList<Tps...>> = HasPlaceHolder<ArgList<Tps...>>{};
+
+template <class>
+struct FilterPlaceHolder;
+
+template <>
+struct FilterPlaceHolder<ArgList<>> {
+  using type = ArgList<>;
+};
+
+template <size_t I, class... Tps>
+struct FilterPlaceHolder<ArgList<PH<I>, Tps...>> {
+  using type = ConcatT<ArgList<PH<I>>, typename FilterPlaceHolder<ArgList<Tps...>>::type>;
+};
+
+template <class F, class... Os>
+struct FilterPlaceHolder<ArgList<F, Os...>> {
+  using type = typename FilterPlaceHolder<ArgList<Os...>>::type;
+};
+
+namespace details {
+
+template <class, class, size_t>
+struct IsContinuousSinceImpl;
+
+template <size_t FI, class... Before, class... After, size_t I>
+struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<PH<FI>, After...>, I>
+    : IsContinuousSinceImpl<ArgList<Before..., PH<FI>>, ArgList<After...>, I> {};
+
+template <class... Before, class... After, size_t I>
+struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<PH<I>, After...>, I>
+    : IsContinuousSinceImpl<ArgList<>, ArgList<Before..., After...>, I + 1> {};
+
+template <class... Before, size_t I>
+struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<>, I> : std::false_type {};
+
+template <size_t I>
+struct IsContinuousSinceImpl<ArgList<>, ArgList<PH<I>>, I> : std::true_type {};
+
+template <class>
+struct GetIndexImpl;
+
+template <size_t I, class... Os>
+struct GetIndexImpl<ArgList<PH<I>, Os...>> {
+  using type = ConcatT<std::index_sequence<I>, typename GetIndexImpl<Os...>::type>;
+};
+
+}  // namespace details
+
+template <class, size_t>
+struct IsContinuousSince;
+
+template <class... PHs, size_t I>
+struct IsContinuousSince<ArgList<PHs...>, I> : details::IsContinuousSinceImpl<ArgList<>, ArgList<PHs...>, I> {};
+
+template <class PlaceHoldersList>
+using GetIndex = typename details::GetIndexImpl<PlaceHoldersList>::type;
+
+template <class Tp>
+class Agent {
+ public:
+  Agent(Tp&& data) : ref_(std::forward<Tp>(data)) {}
+  Tp&& operator()() { return ref_; }
+
+ private:
+  Tp&& ref_;
+};
+
+template <class Tuple, size_t I>
+class Getter {
+  static_assert(I < std::tuple_size_v<Tuple>);
+
+ public:
+  explicit Getter(Tuple& t) : tuple_(t) {}
+  template <class... Tps>
+  decltype(auto) Get() const {
+    return std::get<I>(tuple_);
+  }
+
+ private:
+  Tuple& tuple_;
+};
+
+template <class>
+struct IsGetter : std::false_type {};
+
+template <class Tuple, size_t I>
+struct IsGetter<Getter<Tuple, I>> : std::true_type {};
+
+template <size_t I, class Tuple,
+          class = std::enable_if_t<IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>{}>>
+decltype(auto) Get(Tuple&& tuple) {
+  return std::get<I>(std::forward<Tuple>(tuple)).Get();
+}
+
+template <size_t I, class Tuple>
+decltype(auto) Get(Tuple&& tuple, ...) {
+  return std::get<I>(std::forward<Tuple>(tuple));
+}
+
+};  // namespace placeholders
+
+template <size_t I>
+constexpr auto PlaceHolder() {
+  return placeholders::PH<I>{};
+}
 
 namespace details {
 
 namespace arg {
-
-template <class, class>
-struct IsPrefix;
-
-template <class... Args2>
-struct IsPrefix<ArgList<>, ArgList<Args2...>> : std::true_type {};
-
-template <class F1, class... O1>
-struct IsPrefix<ArgList<F1, O1...>, ArgList<>> : std::false_type {};
-
-template <class F1, class... O1, class... O2>
-struct IsPrefix<ArgList<F1, O1...>, ArgList<F1, O2...>> : IsPrefix<ArgList<O1...>, ArgList<O2...>> {};
-
-template <class F1, class... O1, class F2, class... O2>
-struct IsPrefix<ArgList<F1, O1...>, ArgList<F2, O2...>> : std::false_type {};
-
-template <class, class>
-constexpr bool IsPrefixV;
-
-template <class... Args1, class... Args2>
-constexpr bool IsPrefixV<ArgList<Args1...>, ArgList<Args2...>> = IsPrefix<ArgList<Args1...>, ArgList<Args2...>>::value;
-
-template <class Prefix, class ArgL>
-struct RemovePrefix {};
-
-template <>
-struct RemovePrefix<ArgList<>, ArgList<>> {
-  using type = ArgList<>;
-};
-
-template <class... Args2>
-struct RemovePrefix<ArgList<>, ArgList<Args2...>> {
-  using type = ArgList<Args2...>;
-};
-
-template <class F1, class... O1, class... O2>
-struct RemovePrefix<ArgList<F1, O1...>, ArgList<F1, O2...>> {
-  static_assert(IsPrefixV<ArgList<O1...>, ArgList<O2...>>);
-  using type = typename RemovePrefix<ArgList<O1...>, ArgList<O2...>>::type;
-};
-
-template <class Prefix, class ArgL>
-using RemovePrefixT = typename RemovePrefix<Prefix, ArgL>::type;
 
 template <class, class>
 struct IsPrefixWeak;
@@ -68,10 +169,11 @@ struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<>> : std::false_type {};
 
 template <class F1, class... O1, class F2, class... O2>
 struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<F2, O2...>>
-    : std::conditional_t<std::is_convertible_v<F1, F2>, IsPrefix<ArgList<O1...>, ArgList<O2...>>, std::false_type> {};
+    : std::conditional_t<std::is_convertible_v<F1, F2>, IsPrefixWeak<ArgList<O1...>, ArgList<O2...>>, std::false_type> {
+};
 
 template <class, class>
-constexpr bool IsPrefixWeakV;
+constexpr bool IsPrefixWeakV = false;
 
 template <class... Args1, class... Args2>
 constexpr bool IsPrefixWeakV<ArgList<Args1...>, ArgList<Args2...>> =
@@ -112,7 +214,7 @@ class ClosureImplBase<R(Args...)> {
   using closure_type = R(Args...);
   ClosureImplBase() = default;
   virtual ~ClosureImplBase() = default;
-  virtual result_type Run(Args...) const = 0;
+  virtual result_type Run(Args...) = 0;
 };
 
 template <class...>
@@ -121,21 +223,21 @@ class FuncClosure;
 template <class R, class... Args, class... CallableArgs, class... Binds>
 class FuncClosure<R (*)(Args...), R (*)(CallableArgs...), Binds...> : public ClosureImplBase<R(Args...)> {
  public:
-  using result_type = typename ClosureImplBase<R(Args...)>::result_type;
+  using result_type = R;
   using callable_type = R (*)(CallableArgs...);
   using binder_type = std::tuple<Binds...>;
 
-  template <class... BindArgs>
+  template <class... BindArgs, class = std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BindArgs>...>>>
   explicit FuncClosure(callable_type f, BindArgs&&... args)
       : callable_(f), bind_list_(std::forward<BindArgs>(args)...) {}
 
-  result_type Run(Args... args) const override {
+  result_type Run(Args... args) override {
     return RunHelper(std::index_sequence_for<Binds...>{}, std::forward<Args>(args)...);
   }
 
  private:
   template <std::size_t... I>
-  result_type RunHelper(std::index_sequence<I...>, Args... args) const {
+  result_type RunHelper(std::index_sequence<I...>, Args... args) {
     return callable_(std::get<I>(bind_list_)..., std::forward<Args>(args)...);
   }
 
@@ -149,7 +251,7 @@ auto NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind
       func, std::forward<Binds>(bind_args)...);
 }
 
-};  // namespace details
+}  // namespace details
 
 template <class>
 class Closure;

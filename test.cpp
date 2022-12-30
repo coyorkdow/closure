@@ -6,29 +6,41 @@
 void TestArg() {
   using namespace details::arg;
 
-  static_assert(IsPrefixV<ArgList<>, ArgList<>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<>, ArgList<>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<>, ArgList<>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<>>, ArgList<>>);
 
-  static_assert(IsPrefixV<ArgList<>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<>, ArgList<int>>, ArgList<int>>);
+  static_assert(IsPrefixWeakV<ArgList<>, ArgList<int>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<int>>, ArgList<int>>);
 
-  static_assert(IsPrefixV<ArgList<int>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<int>, ArgList<int>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int>>, ArgList<>>);
 
-  static_assert(IsPrefixV<ArgList<int>, ArgList<int, double>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<int>, ArgList<int, double>>, ArgList<double>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double>>, ArgList<double>>);
 
-  static_assert(IsPrefixV<ArgList<int, double>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<int, double>, ArgList<int, double, long>>, ArgList<long>>);
+  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int, double, long>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, long>>, ArgList<long>>);
 
-  static_assert(IsPrefixV<ArgList<int>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<int>, ArgList<int, double, long>>, ArgList<double, long>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double, long>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double, long>>, ArgList<double, long>>);
 
-  static_assert(IsPrefixV<ArgList<int, double, long>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixT<ArgList<int, double, long>, ArgList<int, double, long>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double, long>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int, double, long>, ArgList<int, double, long>>, ArgList<>>);
 
-  static_assert(!IsPrefixV<ArgList<int, double, long>, ArgList<double, long>>);
-  static_assert(!IsPrefixV<ArgList<int, double, long>, ArgList<int, double>>);
+  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<double, long>>);
+  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double>>);
+
+  static_assert(IsPrefixWeakV<ArgList<const int&>, ArgList<int>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<const int&>, ArgList<int>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<int&&>, ArgList<int>>);
+  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int&&>, ArgList<int>>, ArgList<>>);
+
+  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int&&, double, const long&>>);
+  static_assert(
+      std::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, const long&>>, ArgList<const long&>>);
+
+  static_assert(
+      IsPrefixWeakV<ArgList<decltype(std::ref(std::declval<int&>())), double>, ArgList<int&, double, const long&>>);
 }
 
 std::size_t sum(const int& v1, double v2, int v3, int v4) { return v1 + v2 + v3 + v4; }
@@ -53,6 +65,8 @@ int calculate_sum(std::string exp) {
   return ans;
 }
 
+void test_ref(int& v) { v++; }
+
 void TestClosure() {
   Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
   assert(closure1.Run(2, 3, 4) == 10);
@@ -63,9 +77,37 @@ void TestClosure() {
   std::string exp = "11+12+13";
   assert(MakeClosure(calculate_sum, std::move(exp)).Run() == 36);
   assert(exp.size() == 0);
+
+  int v = 0;
+  auto closure3 = MakeClosure(test_ref, v);
+  static_assert(!std::is_const_v<decltype(v)>);
+  closure3.Run();
+  assert(v == 0);
+  closure3 = MakeClosure(test_ref, std::ref(v));
+  closure3.Run();
+  assert(v == 1);
+}
+
+void TestPlaceHolder() {
+  static_assert(placeholders::IsContinuousSince<ArgList<placeholders::PH<2>>, 2>{});
+  static_assert(
+      placeholders::IsContinuousSince<ArgList<placeholders::PH<0>, placeholders::PH<1>, placeholders::PH<2>>, 0>{});
+  static_assert(placeholders::IsContinuousSince<
+                ArgList<placeholders::PH<3>, placeholders::PH<1>, placeholders::PH<0>, placeholders::PH<2>>, 0>{});
+  static_assert(placeholders::IsContinuousSince<
+                ArgList<placeholders::PH<6>, placeholders::PH<4>, placeholders::PH<3>, placeholders::PH<5>>, 3>{});
+
+  using within_others =
+      ArgList<int, int, placeholders::PH<2>, int, placeholders::PH<3>, placeholders::PH<0>, int, placeholders::PH<1>>;
+  static_assert(placeholders::HasPlaceHolderV<within_others>);
+
+  static_assert(
+      std::is_same_v<typename placeholders::FilterPlaceHolder<within_others>::type,
+                     ArgList<placeholders::PH<2>, placeholders::PH<3>, placeholders::PH<0>, placeholders::PH<1>>>);
 }
 
 int main() {
   TestArg();
   TestClosure();
+  TestPlaceHolder();
 }
