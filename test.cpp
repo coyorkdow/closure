@@ -101,6 +101,12 @@ TEST(TestPlaceHolder, Main) {
   static_assert(std::is_same_v<typename FilterPlaceHolder<within_others>::type, ArgList<PH<2>, PH<3>, PH<0>, PH<1>>>);
 }
 
+TEST(TestPlaceHolder, GetIndex) {
+  using namespace placeholders;
+  using L1 = ArgList<PH<2>, PH<3>, PH<0>, PH<1>>;
+  static_assert(std::is_same_v<std::index_sequence<2, 3, 0, 1>, GetPlaceHolderIndex<L1>>);
+}
+
 TEST(TestAgentAndGetter, AgentBasic) {
   using namespace placeholders;
   std::string str = "123";

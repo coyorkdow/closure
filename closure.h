@@ -87,11 +87,16 @@ template <size_t I>
 struct IsContinuousSinceImpl<ArgList<>, ArgList<PH<I>>, I> : std::true_type {};
 
 template <class>
-struct GetIndexImpl;
+struct GetPlaceHolderIndexImpl;
+
+template <>
+struct GetPlaceHolderIndexImpl<ArgList<>> {
+  using type = std::index_sequence<>;
+};
 
 template <size_t I, class... Os>
-struct GetIndexImpl<ArgList<PH<I>, Os...>> {
-  using type = ConcatT<std::index_sequence<I>, typename GetIndexImpl<Os...>::type>;
+struct GetPlaceHolderIndexImpl<ArgList<PH<I>, Os...>> {
+  using type = ConcatT<std::index_sequence<I>, typename GetPlaceHolderIndexImpl<ArgList<Os...>>::type>;
 };
 
 }  // namespace details
@@ -103,7 +108,7 @@ template <class... PHs, size_t I>
 struct IsContinuousSince<ArgList<PHs...>, I> : details::IsContinuousSinceImpl<ArgList<>, ArgList<PHs...>, I> {};
 
 template <class PlaceHoldersList>
-using GetIndex = typename details::GetIndexImpl<PlaceHoldersList>::type;
+using GetPlaceHolderIndex = typename details::GetPlaceHolderIndexImpl<PlaceHoldersList>::type;
 
 template <class Tp>
 class Agent {
@@ -142,6 +147,8 @@ class Getter {
 
  public:
   Getter() = default;
+  // allow that the PlaceHolder can be implicitly converted to the Getter.
+  Getter(PH<I>) {}
 
   void Bind(Tuple& tuple) { tuple_agent_ = tuple; }
 
@@ -174,6 +181,11 @@ template <size_t I, class Tuple>
 decltype(auto) Get(Tuple&& tuple, ...) {
   return std::get<I>(std::forward<Tuple>(tuple));
 }
+
+// TODO
+// ReplacePlaceHolderToGetter<Tuple, ArgList<...,PlaceHolder<I>,...>> -> ArgList<...,Getter<Tuple, I>,...>
+
+// GetArgsFromIndexSequence
 
 };  // namespace placeholders
 
