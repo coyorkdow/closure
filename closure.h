@@ -107,27 +107,53 @@ using GetIndex = typename details::GetIndexImpl<PlaceHoldersList>::type;
 
 template <class Tp>
 class Agent {
+  class Wrapper {
+   public:
+    Wrapper(Tp&& v) : data_(std::forward<Tp>(v)) {}
+    Tp&& data_;
+  };
+
  public:
-  Agent(Tp&& data) : ref_(std::forward<Tp>(data)) {}
-  Tp&& operator()() { return ref_; }
+  Agent() = default;
+  Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
+  // Has already has the implicit move constructor/assign operator.
+
+  explicit operator bool() const { return static_cast<bool>(ref_); }
+  Tp&& Get() const { return std::forward<Tp>(ref_->data_); }
 
  private:
-  Tp&& ref_;
+  std::unique_ptr<Wrapper> ref_;
 };
 
+template <class>
+struct IsAgent : std::false_type {};
+
+template <class Tp>
+struct IsAgent<Agent<Tp>> : std::true_type {};
+
+template <class Tp>
+constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
+
+// @Tuple must be the set of Agent.
+// @Tuple -> std::tuple<Agent<Tp>...>
 template <class Tuple, size_t I>
 class Getter {
   static_assert(I < std::tuple_size_v<Tuple>);
 
  public:
-  explicit Getter(Tuple& t) : tuple_(t) {}
-  template <class... Tps>
+  Getter() = default;
+
+  void Bind(Tuple& tuple) { tuple_agent_ = tuple; }
+
+  template <class = std::enable_if_t<IsAgentDecayV<decltype(std::get<I>(std::declval<Tuple&>()))>>>
   decltype(auto) Get() const {
-    return std::get<I>(tuple_);
+    return std::get<I>(tuple_agent_.Get()).Get();
   }
 
+  explicit operator bool() const { return static_cast<bool>(tuple_agent_); }
+
  private:
-  Tuple& tuple_;
+  Agent<Tuple&> tuple_agent_;
 };
 
 template <class>
@@ -136,8 +162,10 @@ struct IsGetter : std::false_type {};
 template <class Tuple, size_t I>
 struct IsGetter<Getter<Tuple, I>> : std::true_type {};
 
-template <size_t I, class Tuple,
-          class = std::enable_if_t<IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>{}>>
+template <class Tp>
+constexpr auto IsGetterDecayV = IsGetter<std::decay_t<Tp>>{};
+
+template <size_t I, class Tuple, class = std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>>>
 decltype(auto) Get(Tuple&& tuple) {
   return std::get<I>(std::forward<Tuple>(tuple)).Get();
 }

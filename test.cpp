@@ -2,8 +2,9 @@
 #include <iostream>
 
 #include "closure.h"
+#include "gtest/gtest.h"
 
-void TestArg() {
+TEST(TestArg, Main) {
   using namespace details::arg;
 
   static_assert(IsPrefixWeakV<ArgList<>, ArgList<>>);
@@ -49,7 +50,6 @@ int forwarding_test(std::unique_ptr<int> p) { return *p.get(); }
 
 int calculate_sum(std::string exp) {
   int ans = 0;
-  size_t pos = 0;
   int cur_num = 0;
   for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
     if (*iter == '+') {
@@ -67,47 +67,83 @@ int calculate_sum(std::string exp) {
 
 void test_ref(int& v) { v++; }
 
-void TestClosure() {
+TEST(TestClosure, Main) {
   Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
-  assert(closure1.Run(2, 3, 4) == 10);
+  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
 
   Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
-  assert(closure2.Run(std::make_unique<int>(10)) == 10);
+  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
 
   std::string exp = "11+12+13";
-  assert(MakeClosure(calculate_sum, std::move(exp)).Run() == 36);
-  assert(exp.size() == 0);
+  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
+  ASSERT_TRUE(exp.size() == 0);
 
   int v = 0;
   auto closure3 = MakeClosure(test_ref, v);
   static_assert(!std::is_const_v<decltype(v)>);
   closure3.Run();
-  assert(v == 0);
+  ASSERT_TRUE(v == 0);
   closure3 = MakeClosure(test_ref, std::ref(v));
   closure3.Run();
-  assert(v == 1);
+  ASSERT_TRUE(v == 1);
 }
 
-void TestPlaceHolder() {
-  static_assert(placeholders::IsContinuousSince<ArgList<placeholders::PH<2>>, 2>{});
-  static_assert(
-      placeholders::IsContinuousSince<ArgList<placeholders::PH<0>, placeholders::PH<1>, placeholders::PH<2>>, 0>{});
-  static_assert(placeholders::IsContinuousSince<
-                ArgList<placeholders::PH<3>, placeholders::PH<1>, placeholders::PH<0>, placeholders::PH<2>>, 0>{});
-  static_assert(placeholders::IsContinuousSince<
-                ArgList<placeholders::PH<6>, placeholders::PH<4>, placeholders::PH<3>, placeholders::PH<5>>, 3>{});
+TEST(TestPlaceHolder, Main) {
+  using namespace placeholders;
+  static_assert(IsContinuousSince<ArgList<PH<2>>, 2>{});
+  static_assert(IsContinuousSince<ArgList<PH<0>, PH<1>, PH<2>>, 0>{});
+  static_assert(IsContinuousSince<ArgList<PH<3>, PH<1>, PH<0>, PH<2>>, 0>{});
+  static_assert(IsContinuousSince<ArgList<PH<6>, PH<4>, PH<3>, PH<5>>, 3>{});
 
-  using within_others =
-      ArgList<int, int, placeholders::PH<2>, int, placeholders::PH<3>, placeholders::PH<0>, int, placeholders::PH<1>>;
-  static_assert(placeholders::HasPlaceHolderV<within_others>);
+  using within_others = ArgList<int, int, PH<2>, int, PH<3>, PH<0>, int, PH<1>>;
+  static_assert(HasPlaceHolderV<within_others>);
 
-  static_assert(
-      std::is_same_v<typename placeholders::FilterPlaceHolder<within_others>::type,
-                     ArgList<placeholders::PH<2>, placeholders::PH<3>, placeholders::PH<0>, placeholders::PH<1>>>);
+  static_assert(std::is_same_v<typename FilterPlaceHolder<within_others>::type, ArgList<PH<2>, PH<3>, PH<0>, PH<1>>>);
 }
 
-int main() {
-  TestArg();
-  TestClosure();
-  TestPlaceHolder();
+TEST(TestAgentAndGetter, AgentBasic) {
+  using namespace placeholders;
+  std::string str = "123";
+  Agent<std::string> str_agent(std::move(str));
+  ASSERT_EQ(str, "123");
+  ASSERT_EQ(str_agent.Get(), "123");
+  str = "1";
+  ASSERT_EQ(str_agent.Get(), "1");
+  std::string{str_agent.Get()};
+  EXPECT_TRUE(str_agent.Get().empty());
+  EXPECT_TRUE(str.empty());
+  EXPECT_TRUE(str_agent);
+  str_agent = std::string("123");
+
+  Agent<std::string> ano = std::move(str_agent);
+  ASSERT_EQ(ano.Get(), "123");
+  ASSERT_EQ(str, "");
+  ASSERT_FALSE(str_agent);
+  str_agent = std::string("456");
+  ASSERT_EQ(str_agent.Get(), "456");
+}
+
+TEST(TestAgentAndGetter, AgentTuple) {
+  using namespace placeholders;
+  std::tuple<Agent<int>, Agent<double>, Agent<std::string>> agents;
+  auto& [v1, v2, v3] = agents;
+  v1 = 1;
+  v2 = 1.5;
+  v3 = std::string("2.0");
+  EXPECT_EQ(v1.Get(), 1);
+  EXPECT_EQ(v2.Get(), 1.5);
+  EXPECT_EQ(v3.Get(), "2.0");
+
+  EXPECT_EQ(std::get<2>(agents).Get(), "2.0");
+}
+
+TEST(TestAgentAndGetter, GetterBasic) {
+  using namespace placeholders;
+  std::tuple<Agent<std::string>> agents(std::string("1234" /*must explicitly declare as std::string*/));
+  Getter<decltype(agents), 0> getter;
+  ASSERT_FALSE(getter);
+  EXPECT_EQ(std::get<0>(agents).Get(), "1234");
+  getter.Bind(agents);
+  EXPECT_EQ(std::get<0>(agents).Get(), "1234");
+  EXPECT_EQ(getter.Get(), "1234");
 }
