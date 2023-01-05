@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 
 TEST(TestArg, Main) {
-  using namespace details::arg;
+  using namespace details;
 
   static_assert(IsPrefixWeakV<ArgList<>, ArgList<>>);
   static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<>>, ArgList<>>);
@@ -67,7 +67,7 @@ int calculate_sum(std::string exp) {
 
 void test_ref(int& v) { v++; }
 
-TEST(TestClosure, Main) {
+TEST(TestClosure, Basic) {
   Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
   ASSERT_EQ(closure1.Run(2, 3, 4), 10);
 
@@ -88,7 +88,7 @@ TEST(TestClosure, Main) {
   ASSERT_TRUE(v == 1);
 }
 
-TEST(TestPlaceHolder, Main) {
+TEST(TestPlaceHolder, Basic) {
   using namespace placeholders;
   static_assert(IsContinuousSince<ArgList<PH<2>>, 2>{});
   static_assert(IsContinuousSince<ArgList<PH<0>, PH<1>, PH<2>>, 0>{});
@@ -152,4 +152,13 @@ TEST(TestAgentAndGetter, GetterBasic) {
   getter.Bind(agents);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   EXPECT_EQ(getter.Get(), "1234");
+}
+
+TEST(TestAgentAndGetter, TupleMap) {
+  using namespace placeholders;
+  using args = ArgList<int, double, std::string, long>;
+  using binds = ArgList<int, PH<0>, PH<1>, long>;
+  static_assert(::details::IsPrefixWeakV<binds, args>);
+  using ph_args = ::details::GetPlaceHolderCorrespondTypeT<binds, args>;
+  static_assert(std::is_same_v<ph_args, ArgList<double, std::string>>);
 }

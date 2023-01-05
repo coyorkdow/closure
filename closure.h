@@ -32,6 +32,15 @@ template <size_t>
 struct PH {};
 
 template <class>
+struct IsPlaceHolder : std::false_type {};
+
+template <size_t I>
+struct IsPlaceHolder<PH<I>> : std::true_type {};
+
+template <class Tp>
+constexpr auto IsPlaceHolderV = IsPlaceHolder<Tp>{};
+
+template <class>
 struct HasPlaceHolder;
 
 template <>
@@ -183,7 +192,9 @@ decltype(auto) Get(Tuple&& tuple, ...) {
 }
 
 // TODO
-// ReplacePlaceHolderToGetter<Tuple, ArgList<...,PlaceHolder<I>,...>> -> ArgList<...,Getter<Tuple, I>,...>
+
+// ReplacePlaceHolderToGetter<Tuple, ArgList<...,PlaceHolder<I>,...>> ->
+// ArgList<...,Getter<Tuple, I>,...>
 
 // GetArgsFromIndexSequence
 
@@ -196,8 +207,6 @@ constexpr auto PlaceHolder() {
 
 namespace details {
 
-namespace arg {
-
 template <class, class>
 struct IsPrefixWeak;
 
@@ -209,8 +218,8 @@ struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<>> : std::false_type {};
 
 template <class F1, class... O1, class F2, class... O2>
 struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<F2, O2...>>
-    : std::conditional_t<std::is_convertible_v<F1, F2>, IsPrefixWeak<ArgList<O1...>, ArgList<O2...>>, std::false_type> {
-};
+    : std::conditional_t<placeholders::IsPlaceHolderV<F1> || std::is_convertible_v<F1, F2>,
+                         IsPrefixWeak<ArgList<O1...>, ArgList<O2...>>, std::false_type> {};
 
 template <class, class>
 constexpr bool IsPrefixWeakV = false;
@@ -241,7 +250,26 @@ struct RemovePrefixWeak<ArgList<F1, O1...>, ArgList<F2, O2...>> {
 template <class Prefix, class ArgL>
 using RemovePrefixWeakT = typename RemovePrefixWeak<Prefix, ArgL>::type;
 
-}  // namespace arg
+template <class Prefix, class ArgL>
+struct GetPlaceHolderCorrespondType;
+
+template <size_t I, class... O1, class F2, class... O2>
+struct GetPlaceHolderCorrespondType<ArgList<placeholders::PH<I>, O1...>, ArgList<F2, O2...>> {
+  using type = ConcatT<ArgList<F2>, typename GetPlaceHolderCorrespondType<ArgList<O1...>, ArgList<O2...>>::type>;
+};
+
+template <class F1, class... O1, class F2, class... O2>
+struct GetPlaceHolderCorrespondType<ArgList<F1, O1...>, ArgList<F2, O2...>> {
+  using type = typename GetPlaceHolderCorrespondType<ArgList<O1...>, ArgList<O2...>>::type;
+};
+
+template <class... Tps>
+struct GetPlaceHolderCorrespondType<ArgList<>, ArgList<Tps...>> {
+  using type = ArgList<>;
+};
+
+template <class Prefix, class ArgL>
+using GetPlaceHolderCorrespondTypeT = typename GetPlaceHolderCorrespondType<Prefix, ArgL>::type;
 
 template <class>
 class ClosureImplBase;
@@ -305,10 +333,9 @@ class Closure<R(Args...)> {
   using arguments_type = ArgList<Args...>;
 
   template <class... FuncArgs, class... Binds,
-            class = std::enable_if_t<details::arg::IsPrefixWeakV<ArgList<Binds...>, ArgList<FuncArgs...>>>>
+            class = std::enable_if_t<details::IsPrefixWeakV<ArgList<Binds...>, ArgList<FuncArgs...>>>>
   Closure(R (*func)(FuncArgs...), Binds&&... bind_args) {
-    static_assert(
-        std::is_same_v<arguments_type, details::arg::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>);
+    static_assert(std::is_same_v<arguments_type, details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>);
     pimpl_.reset(NewClosureImpl(arguments_type{}, func, std::forward<Binds>(bind_args)...));
   }
 
@@ -323,9 +350,9 @@ class Closure<R(Args...)> {
 };
 
 template <class R, class... Args, class... Binds,
-          class = std::enable_if_t<details::arg::IsPrefixWeakV<ArgList<Binds...>, ArgList<Args...>>>>
+          class = std::enable_if_t<details::IsPrefixWeakV<ArgList<Binds...>, ArgList<Args...>>>>
 decltype(auto) MakeClosure(R (*func)(Args...), Binds&&... bind_args) {
-  using closure_args = details::arg::RemovePrefixWeakT<ArgList<Binds...>, ArgList<Args...>>;
+  using closure_args = details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<Args...>>;
   auto res = details::NewClosureImpl(closure_args{}, func, std::forward<Binds>(bind_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(res);
