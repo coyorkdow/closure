@@ -421,9 +421,22 @@ class FuncClosure<R (*)(Args...), R (*)(CallableArgs...), Binds...> : public Clo
   binder_type bind_list_;
 };
 
+template <class...>
+class FuncClosureWithPlaceHolders;  // TODO
+
 template <class R, class... ClosureArgs, class... Args, class... Binds>
-auto NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args) {
+std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<Binds>...>,
+                 FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>*>
+NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args) {
   return new FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>(
+      func, std::forward<Binds>(bind_args)...);
+}
+
+template <class R, class... ClosureArgs, class... Args, class... Binds>
+std::enable_if_t<placeholders::HasPlaceHolderV<std::decay_t<Binds>...>,
+                 FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>*>
+NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args) {
+  return new FuncClosureWithPlaceHolders<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>(
       func, std::forward<Binds>(bind_args)...);
 }
 
@@ -440,8 +453,7 @@ class Closure<R(Args...)> {
   using result_type = R;
   using arguments_type = ArgList<Args...>;
 
-  template <class... FuncArgs, class... Binds,
-            class = std::enable_if_t<details::IsPrefixWeakV<ArgList<Binds...>, ArgList<FuncArgs...>>>>
+  template <class... FuncArgs, class... Binds>
   Closure(R (*func)(FuncArgs...), Binds&&... bind_args) {
     static_assert(std::is_same_v<arguments_type, details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>);
     pimpl_.reset(NewClosureImpl(arguments_type{}, func, std::forward<Binds>(bind_args)...));
@@ -457,8 +469,7 @@ class Closure<R(Args...)> {
   std::unique_ptr<impl_type> pimpl_;
 };
 
-template <class R, class... Args, class... Binds,
-          class = std::enable_if_t<details::IsPrefixWeakV<ArgList<Binds...>, ArgList<Args...>>>>
+template <class R, class... Args, class... Binds>
 decltype(auto) MakeClosure(R (*func)(Args...), Binds&&... bind_args) {
   using closure_args = details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<Args...>>;
   auto res = details::NewClosureImpl(closure_args{}, func, std::forward<Binds>(bind_args)...);
