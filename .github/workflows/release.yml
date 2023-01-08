@@ -29,5 +29,5 @@ jobs:
       run: cd build && make
 
     - name: Test
-      run: cd build && /closure_test
+      run: cd build && ./closure_test
 
