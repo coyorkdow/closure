@@ -145,13 +145,17 @@ TEST(TestAgentAndGetter, AgentTuple) {
 
 TEST(TestAgentAndGetter, GetterBasic) {
   using namespace placeholders;
-  std::tuple<Agent<std::string>> agents(std::string("1234" /*must explicitly declare as std::string*/));
+  std::tuple<Agent<std::string>, Agent<int>> agents(std::string("1234" /*must explicitly declare as std::string*/), 1);
   Getter<decltype(agents), 0> getter;
   ASSERT_FALSE(getter);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   getter.Bind(agents);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   EXPECT_EQ(getter.Get(), "1234");
+
+  auto& [v1, v2] = agents;
+  v1 = std::string("modified");
+  EXPECT_EQ(getter.Get(), "modified");
 }
 
 TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
@@ -162,7 +166,8 @@ TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
   using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
   static_assert(std::is_same_v<ph_args, ArgList<double, std::string>>);
 
-  static_assert(std::is_same_v<details::GetPlaceHoldersCorrespondTypesT<ArgList<PH<0>>, ArgList<long>>, ArgList<long>>);
+  static_assert(
+      std::is_same_v<details::GetPlaceHoldersCorrespondTypesT<ArgList<PH<0>>, ArgList<long, int>>, ArgList<long>>);
 }
 
 TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
@@ -175,4 +180,16 @@ TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
   static_assert(std::is_same_v<result, ArgList<char, double, float, std::string>>);
 
   static_assert(std::is_same_v<details::SortPlaceHoldersCorrespondTypesT<ArgList<int>, ArgList<PH<0>>>, ArgList<int>>);
+}
+
+TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
+  using namespace placeholders;
+  using args = ArgList<int, double, std::string, long, char, float, void>;
+  using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
+  using result = details::ReplacePlaceHoldersToGettersT<binds, args>;
+
+  using bind_type = std::tuple<Agent<char>, Agent<double>, Agent<float>, Agent<std::string>>;
+
+  static_assert(std::is_same_v<result, ArgList<int, Getter<bind_type, 1>, Getter<bind_type, 3>, long,
+                                               Getter<bind_type, 0>, Getter<bind_type, 2>>>);
 }

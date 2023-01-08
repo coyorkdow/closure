@@ -138,6 +138,15 @@ class Agent {
   std::unique_ptr<Wrapper> ref_;
 };
 
+template <class... Tps>
+auto MakeAgents(std::tuple<Tps...>) -> std::tuple<Agent<Tps>...>;
+
+template <class... Tps>
+auto MakeAgents(ArgList<Tps...>) -> std::tuple<Agent<Tps>...>;
+
+template <class Tuple>
+using MakeAgentsT = decltype(MakeAgents(std::declval<Tuple>()));
+
 template <class>
 struct IsAgent : std::false_type {};
 
@@ -336,6 +345,39 @@ struct SortPlaceHoldersCorrespondTypes<ArgList<Tps...>, ArgList<placeholders::PH
 
 template <class ArgL, class PHL>
 using SortPlaceHoldersCorrespondTypesT = typename SortPlaceHoldersCorrespondTypes<ArgL, PHL>::type;
+
+template <class ArgL, class Tuple>
+struct ReplacePlaceHoldersToGettersImpl;
+
+template <class F, class... Os, class Tuple>
+struct ReplacePlaceHoldersToGettersImpl<ArgList<F, Os...>, Tuple> {
+  using type = ConcatT<ArgList<F>, typename ReplacePlaceHoldersToGettersImpl<ArgList<Os...>, Tuple>::type>;
+};
+
+template <size_t I, class... Os, class Tuple>
+struct ReplacePlaceHoldersToGettersImpl<ArgList<placeholders::PH<I>, Os...>, Tuple> {
+  using type = ConcatT<ArgList<placeholders::Getter<Tuple, I>>,
+                       typename ReplacePlaceHoldersToGettersImpl<ArgList<Os...>, Tuple>::type>;
+};
+
+template <class Tuple>
+struct ReplacePlaceHoldersToGettersImpl<ArgList<>, Tuple> {
+  using type = ArgList<>;
+};
+
+template <class Prefix, class ArgL>
+struct ReplacePlaceHoldersToGetters {
+ private:
+  using ph_args = GetPlaceHoldersCorrespondTypesT<Prefix, ArgL>;
+  using phl = placeholders::FilterPlaceHolderT<Prefix>;
+  using sorted = SortPlaceHoldersCorrespondTypesT<ph_args, phl>;
+
+ public:
+  using type = typename ReplacePlaceHoldersToGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
+};
+
+template <class Prefix, class ArgL>
+using ReplacePlaceHoldersToGettersT = typename ReplacePlaceHoldersToGetters<Prefix, ArgL>::type;
 
 template <class>
 class ClosureImplBase;
