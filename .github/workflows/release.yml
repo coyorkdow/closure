@@ -29,6 +29,5 @@ jobs:
       run: cd build && make
 
     - name: Test
-      working-directory: ${{github.workspace}}/build
-      run: /closure_test
+      run: cd build && /closure_test
 
