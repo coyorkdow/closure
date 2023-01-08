@@ -115,18 +115,28 @@ TEST(TestAgentAndGetter, AgentBasic) {
   ASSERT_EQ(str_agent.Get(), "123");
   str = "1";
   ASSERT_EQ(str_agent.Get(), "1");
-  std::string{str_agent.Get()};
+  std::string{str_agent.Get()};  // str_agent.Get() returns rvalue reference, so the move constructor incurred.
   EXPECT_TRUE(str_agent.Get().empty());
   EXPECT_TRUE(str.empty());
   EXPECT_TRUE(str_agent);
+  // Bind to another string.
   str_agent = std::string("123");
-
+  ASSERT_EQ(str_agent.Get(), "123");
+  ASSERT_EQ(str, ""); // str_agent now has nothing to do with str.
   Agent<std::string> ano = std::move(str_agent);
   ASSERT_EQ(ano.Get(), "123");
   ASSERT_EQ(str, "");
   ASSERT_FALSE(str_agent);
   str_agent = std::string("456");
   ASSERT_EQ(str_agent.Get(), "456");
+}
+
+TEST(TestAgentAndGetter, AgentBasic2) {
+  using namespace placeholders;
+  std::string str = "123";
+  Agent<std::string&> str_agent(str);
+  str_agent.Get() = "456";
+  EXPECT_EQ(str, "456");
 }
 
 TEST(TestAgentAndGetter, AgentTuple) {
@@ -149,7 +159,7 @@ TEST(TestAgentAndGetter, GetterBasic) {
   Getter<decltype(agents), 0> getter;
   ASSERT_FALSE(getter);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
-  getter.Bind(agents);
+  getter.Map(agents);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   EXPECT_EQ(getter.Get(), "1234");
 

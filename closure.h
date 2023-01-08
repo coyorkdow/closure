@@ -167,7 +167,7 @@ class Getter {
   // allow that the PlaceHolder can be implicitly converted to the Getter.
   Getter(PH<I>) {}
 
-  void Bind(Tuple& tuple) { tuple_agent_ = tuple; }
+  void Map(Tuple& tuple) { tuple_agent_ = tuple; }
 
   template <class = std::enable_if_t<IsAgentDecayV<decltype(std::get<I>(std::declval<Tuple&>()))>>>
   decltype(auto) Get() const {
