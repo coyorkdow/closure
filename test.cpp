@@ -154,11 +154,25 @@ TEST(TestAgentAndGetter, GetterBasic) {
   EXPECT_EQ(getter.Get(), "1234");
 }
 
-TEST(TestAgentAndGetter, TupleMap) {
+TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
   using namespace placeholders;
   using args = ArgList<int, double, std::string, long>;
-  using binds = ArgList<int, PH<0>, PH<1>, long>;
-  static_assert(::details::IsPrefixWeakV<binds, args>);
-  using ph_args = ::details::GetPlaceHolderCorrespondTypeT<binds, args>;
+  using binds = ArgList<int, PH<1>, PH<0>, long>;
+  static_assert(details::IsPrefixWeakV<binds, args>);
+  using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
   static_assert(std::is_same_v<ph_args, ArgList<double, std::string>>);
+
+  static_assert(std::is_same_v<details::GetPlaceHoldersCorrespondTypesT<ArgList<PH<0>>, ArgList<long>>, ArgList<long>>);
+}
+
+TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
+  using namespace placeholders;
+  using args = ArgList<int, double, std::string, long, char, float>;
+  using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
+  using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
+  using phl = FilterPlaceHolderT<binds>;
+  using result = typename details::SortPlaceHoldersCorrespondTypes<ph_args, phl>::type;
+  static_assert(std::is_same_v<result, ArgList<char, double, float, std::string>>);
+
+  static_assert(std::is_same_v<details::SortPlaceHoldersCorrespondTypesT<ArgList<int>, ArgList<PH<0>>>, ArgList<int>>);
 }

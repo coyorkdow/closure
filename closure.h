@@ -76,7 +76,8 @@ struct FilterPlaceHolder<ArgList<F, Os...>> {
   using type = typename FilterPlaceHolder<ArgList<Os...>>::type;
 };
 
-namespace details {
+template <class ArgL>
+using FilterPlaceHolderT = typename FilterPlaceHolder<ArgL>::type;
 
 template <class, class, size_t>
 struct IsContinuousSinceImpl;
@@ -108,16 +109,14 @@ struct GetPlaceHolderIndexImpl<ArgList<PH<I>, Os...>> {
   using type = ConcatT<std::index_sequence<I>, typename GetPlaceHolderIndexImpl<ArgList<Os...>>::type>;
 };
 
-}  // namespace details
-
 template <class, size_t>
 struct IsContinuousSince;
 
 template <class... PHs, size_t I>
-struct IsContinuousSince<ArgList<PHs...>, I> : details::IsContinuousSinceImpl<ArgList<>, ArgList<PHs...>, I> {};
+struct IsContinuousSince<ArgList<PHs...>, I> : IsContinuousSinceImpl<ArgList<>, ArgList<PHs...>, I> {};
 
 template <class PlaceHoldersList>
-using GetPlaceHolderIndex = typename details::GetPlaceHolderIndexImpl<PlaceHoldersList>::type;
+using GetPlaceHolderIndex = typename GetPlaceHolderIndexImpl<PlaceHoldersList>::type;
 
 template <class Tp>
 class Agent {
@@ -193,7 +192,7 @@ decltype(auto) Get(Tuple&& tuple, ...) {
 
 // TODO
 
-// ReplacePlaceHolderToGetter<Tuple, ArgList<...,PlaceHolder<I>,...>> ->
+// ReplacePlaceHoldersToGetters<Tuple, ArgList<...,PlaceHolder<I>,...>> ->
 // ArgList<...,Getter<Tuple, I>,...>
 
 // GetArgsFromIndexSequence
@@ -251,25 +250,92 @@ template <class Prefix, class ArgL>
 using RemovePrefixWeakT = typename RemovePrefixWeak<Prefix, ArgL>::type;
 
 template <class Prefix, class ArgL>
-struct GetPlaceHolderCorrespondType;
+struct GetPlaceHoldersCorrespondTypes;
 
 template <size_t I, class... O1, class F2, class... O2>
-struct GetPlaceHolderCorrespondType<ArgList<placeholders::PH<I>, O1...>, ArgList<F2, O2...>> {
-  using type = ConcatT<ArgList<F2>, typename GetPlaceHolderCorrespondType<ArgList<O1...>, ArgList<O2...>>::type>;
+struct GetPlaceHoldersCorrespondTypes<ArgList<placeholders::PH<I>, O1...>, ArgList<F2, O2...>> {
+  using type = ConcatT<ArgList<F2>, typename GetPlaceHoldersCorrespondTypes<ArgList<O1...>, ArgList<O2...>>::type>;
 };
 
 template <class F1, class... O1, class F2, class... O2>
-struct GetPlaceHolderCorrespondType<ArgList<F1, O1...>, ArgList<F2, O2...>> {
-  using type = typename GetPlaceHolderCorrespondType<ArgList<O1...>, ArgList<O2...>>::type;
+struct GetPlaceHoldersCorrespondTypes<ArgList<F1, O1...>, ArgList<F2, O2...>> {
+  using type = typename GetPlaceHoldersCorrespondTypes<ArgList<O1...>, ArgList<O2...>>::type;
 };
 
 template <class... Tps>
-struct GetPlaceHolderCorrespondType<ArgList<>, ArgList<Tps...>> {
+struct GetPlaceHoldersCorrespondTypes<ArgList<>, ArgList<Tps...>> {
   using type = ArgList<>;
 };
 
 template <class Prefix, class ArgL>
-using GetPlaceHolderCorrespondTypeT = typename GetPlaceHolderCorrespondType<Prefix, ArgL>::type;
+using GetPlaceHoldersCorrespondTypesT = typename GetPlaceHoldersCorrespondTypes<Prefix, ArgL>::type;
+
+namespace sort {
+
+enum class Cond { Unchecked, False, True };
+
+template <size_t I, class Tp>
+struct Component {};
+
+template <class Com, class SortedBefore, class SortedAfter, Cond = Cond::Unchecked>
+struct Insert;
+
+template <size_t I, class Tp, size_t FI, class FT, class... O1, class... O2>
+struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>, Cond::Unchecked> {
+  using type = typename Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>,
+                               (I < FI) ? Cond::True : Cond::False>::type;
+};
+
+template <size_t I, class Tp, class... O1, class... O2>
+struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<O2...>, Cond::True> {
+  using type = ArgList<O1..., Component<I, Tp>, O2...>;
+};
+
+template <size_t I, class Tp, size_t FI, class FT, class... O1, class... O2>
+struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>, Cond::False> {
+  using type = typename Insert<Component<I, Tp>, ArgList<O1..., Component<FI, FT>>, ArgList<O2...>>::type;
+};
+
+template <size_t I, class Tp, class... O1>
+struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<>> {
+  using type = ArgList<O1..., Component<I, Tp>>;
+};
+
+template <class ArgL, class PHL>
+struct Sort;
+
+template <class Tp, class... Tps, size_t FI, class... Os>
+struct Sort<ArgList<Tp, Tps...>, ArgList<placeholders::PH<FI>, Os...>> {
+  using type =
+      typename Insert<Component<FI, Tp>, ArgList<>, typename Sort<ArgList<Tps...>, ArgList<Os...>>::type>::type;
+};
+
+template <class Tp, size_t FI>
+struct Sort<ArgList<Tp>, ArgList<placeholders::PH<FI>>> {
+  using type = ArgList<Component<FI, Tp>>;
+};
+
+template <class ArgL, class PHL>
+using SortT = typename Sort<ArgL, PHL>::type;
+
+template <size_t... I, class... Tps>
+auto RemoveIndices(ArgList<Component<I, Tps>...>) -> ArgList<Tps...>;
+
+template <class Arg>
+using RemoveIndicesV = decltype(RemoveIndices(std::declval<Arg>()));
+
+}  // namespace sort
+
+template <class ArgL, class PHL>
+struct SortPlaceHoldersCorrespondTypes;
+
+template <class... Tps, size_t... I>
+struct SortPlaceHoldersCorrespondTypes<ArgList<Tps...>, ArgList<placeholders::PH<I>...>> {
+  using type = sort::RemoveIndicesV<sort::SortT<ArgList<Tps...>, ArgList<placeholders::PH<I>...>>>;
+};
+
+template <class ArgL, class PHL>
+using SortPlaceHoldersCorrespondTypesT = typename SortPlaceHoldersCorrespondTypes<ArgL, PHL>::type;
 
 template <class>
 class ClosureImplBase;
