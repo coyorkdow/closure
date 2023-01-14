@@ -179,10 +179,10 @@ TEST(TestAgentAndGetter, GettersMapping) {
   EXPECT_EQ(v2.Get(), std::get<1>(getters).Get());
   v1 = std::string("modified");
   v2 = 2;
-  EXPECT_EQ(v2.Get(), 2);
   EXPECT_EQ(getter.Get(), v1.Get());
   EXPECT_EQ(placeholders::Get<0>(getters), 0);
   EXPECT_EQ(placeholders::Get<1>(getters), v2.Get());
+  EXPECT_EQ(v2.Get(), 2);
   EXPECT_EQ(placeholders::Get<1>(getters), 2);
   EXPECT_EQ(placeholders::Get<2>(getters), v1.Get());
 }
