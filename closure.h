@@ -8,7 +8,9 @@
 #include <type_traits>
 
 template <class... Tps>
-struct ArgList {};
+struct ArgList {
+  using tuple_type = std::tuple<Tps...>;
+};
 
 template <class, class>
 struct Concat;
@@ -16,6 +18,11 @@ struct Concat;
 template <class... Tps1, class... Tps2>
 struct Concat<ArgList<Tps1...>, ArgList<Tps2...>> {
   using type = ArgList<Tps1..., Tps2...>;
+};
+
+template <class... Tps1, class... Tps2>
+struct Concat<std::tuple<Tps1...>, std::tuple<Tps2...>> {
+  using type = std::tuple<Tps1..., Tps2...>;
 };
 
 template <size_t... I1, size_t... I2>
@@ -127,9 +134,9 @@ class Agent {
   };
 
  public:
-  Agent() = default;
+  Agent() noexcept = default;
   Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
-  // Has already has the implicit move constructor/assign operator.
+  // Already has the implicit move constructor/assign operator.
 
   explicit operator bool() const noexcept { return static_cast<bool>(ref_); }
   Tp&& Get() const noexcept { return std::forward<Tp>(ref_->data_); }
@@ -156,28 +163,23 @@ struct IsAgent<Agent<Tp>> : std::true_type {};
 template <class Tp>
 constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
 
-// @Tuple must be the set of Agent.
-// @Tuple -> std::tuple<Agent<Tp>...>
-template <class Tuple, size_t I>
+template <class AgentsTuple, size_t I>
 class Getter {
-  static_assert(I < std::tuple_size_v<Tuple>);
+  static_assert(I < std::tuple_size_v<AgentsTuple>);
+  static_assert(IsAgentDecayV<decltype(std::get<I>(std::declval<AgentsTuple&>()))>, "Getter's target is not an agent");
 
  public:
-  Getter() = default;
-  // allow that the PlaceHolder can be implicitly converted to the Getter.
-  Getter(PH<I>) noexcept {}
+  Getter() noexcept = default;
+  Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
 
-  void Map(Tuple& tuple) { tuple_agent_ = tuple; }
+  void Map(AgentsTuple& tuple) { agents_tuple_ = tuple; }
 
-  template <class = std::enable_if_t<IsAgentDecayV<decltype(std::get<I>(std::declval<Tuple&>()))>>>
-  decltype(auto) Get() const noexcept {
-    return std::get<I>(tuple_agent_.Get()).Get();
-  }
+  decltype(auto) Get() const noexcept { return std::get<I>(agents_tuple_.Get()).Get(); }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(tuple_agent_); }
+  explicit operator bool() const noexcept { return static_cast<bool>(agents_tuple_); }
 
  private:
-  Agent<Tuple&> tuple_agent_;
+  Agent<AgentsTuple&> agents_tuple_;
 };
 
 template <class>
@@ -189,27 +191,46 @@ struct IsGetter<Getter<Tuple, I>> : std::true_type {};
 template <class Tp>
 constexpr auto IsGetterDecayV = IsGetter<std::decay_t<Tp>>{};
 
-template <size_t I, class Tuple, class = std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>>>
+template <size_t I, class GettersTuple, class AgentsTuple,
+          std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<GettersTuple>()))>, int> = 0>
+void TryMap(GettersTuple&& getters, AgentsTuple& agents, int& cnt) {
+  std::get<I>(std::forward<GettersTuple>(getters)).Map(agents);
+  cnt++;
+}
+
+template <size_t I, class... Tps>
+constexpr void TryMap(Tps&&...) noexcept {}
+
+template <size_t... I, class GettersTuple, class AgentsTuple>
+int MapGetters(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& agents) {
+  using expander = int[];
+  int cnt = 0;
+  (void)expander{(TryMap<I>(std::forward<GettersTuple>(getters), agents, cnt), 0)...};
+  return cnt;
+}
+
+template <class GettersTuple, class AgentsTuple>
+int MapGetters(GettersTuple&& getters, AgentsTuple& agents) {
+  constexpr auto size = std::tuple_size_v<std::decay_t<GettersTuple>>;
+  return MapGetters(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
+}
+
+template <size_t I, class Tuple,
+          std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
 decltype(auto) Get(Tuple&& tuple) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple)).Get();
 }
 
-template <size_t I, class Tuple>
-decltype(auto) Get(Tuple&& tuple, ...) noexcept {
+template <size_t I, class Tuple,
+          std::enable_if_t<!IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
+decltype(auto) Get(Tuple&& tuple) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple));
 }
-
-// TODO
-
-// ReplacePlaceHoldersToGetters<Tuple, ArgList<...,PlaceHolder<I>,...>> ->
-// ArgList<...,Getter<Tuple, I>,...>
-
-// GetArgsFromIndexSequence
 
 };  // namespace placeholders
 
 template <size_t I>
-constexpr auto PlaceHolder() {
+constexpr auto PlaceHolder() noexcept {
   return placeholders::PH<I>{};
 }
 
@@ -347,37 +368,43 @@ template <class ArgL, class PHL>
 using SortPlaceHoldersCorrespondTypesT = typename SortPlaceHoldersCorrespondTypes<ArgL, PHL>::type;
 
 template <class ArgL, class Tuple>
-struct ReplacePlaceHoldersToGettersImpl;
+struct ReplacePlaceHoldersWithGettersImpl;
 
 template <class F, class... Os, class Tuple>
-struct ReplacePlaceHoldersToGettersImpl<ArgList<F, Os...>, Tuple> {
-  using type = ConcatT<ArgList<F>, typename ReplacePlaceHoldersToGettersImpl<ArgList<Os...>, Tuple>::type>;
+struct ReplacePlaceHoldersWithGettersImpl<ArgList<F, Os...>, Tuple> {
+  using type = ConcatT<ArgList<F>, typename ReplacePlaceHoldersWithGettersImpl<ArgList<Os...>, Tuple>::type>;
 };
 
 template <size_t I, class... Os, class Tuple>
-struct ReplacePlaceHoldersToGettersImpl<ArgList<placeholders::PH<I>, Os...>, Tuple> {
+struct ReplacePlaceHoldersWithGettersImpl<ArgList<placeholders::PH<I>, Os...>, Tuple> {
   using type = ConcatT<ArgList<placeholders::Getter<Tuple, I>>,
-                       typename ReplacePlaceHoldersToGettersImpl<ArgList<Os...>, Tuple>::type>;
+                       typename ReplacePlaceHoldersWithGettersImpl<ArgList<Os...>, Tuple>::type>;
 };
 
 template <class Tuple>
-struct ReplacePlaceHoldersToGettersImpl<ArgList<>, Tuple> {
+struct ReplacePlaceHoldersWithGettersImpl<ArgList<>, Tuple> {
   using type = ArgList<>;
 };
 
 template <class Prefix, class ArgL>
-struct ReplacePlaceHoldersToGetters {
+struct ReplacePlaceHoldersWithGetters {
+  static_assert(IsPrefixWeakV<Prefix, ArgL>);
+
  private:
   using ph_args = GetPlaceHoldersCorrespondTypesT<Prefix, ArgL>;
   using phl = placeholders::FilterPlaceHolderT<Prefix>;
   using sorted = SortPlaceHoldersCorrespondTypesT<ph_args, phl>;
 
  public:
-  using type = typename ReplacePlaceHoldersToGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
+  using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
+  using agents_type = placeholders::MakeAgentsT<sorted>;
 };
 
 template <class Prefix, class ArgL>
-using ReplacePlaceHoldersToGettersT = typename ReplacePlaceHoldersToGetters<Prefix, ArgL>::type;
+using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::type;
+
+template <class Prefix, class ArgL>
+using PlaceHoldersAgentsT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_type;
 
 template <class>
 class ClosureImplBase;
@@ -461,8 +488,8 @@ class Closure<R(Args...)> {
 
   explicit Closure(impl_type* pimpl) : pimpl_(pimpl) {}
   Closure(const Closure&) = delete;
-  Closure(Closure&&) = default;
-  Closure& operator=(Closure&&) = default;
+  Closure(Closure&&)  noexcept = default;
+  Closure& operator=(Closure&&)  noexcept = default;
 
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
 

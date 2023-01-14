@@ -122,7 +122,7 @@ TEST(TestAgentAndGetter, AgentBasic) {
   // Bind to another string.
   str_agent = std::string("123");
   ASSERT_EQ(str_agent.Get(), "123");
-  ASSERT_EQ(str, ""); // str_agent now has nothing to do with str.
+  ASSERT_EQ(str, "");  // str_agent now has nothing to do with str.
   Agent<std::string> ano = std::move(str_agent);
   ASSERT_EQ(ano.Get(), "123");
   ASSERT_EQ(str, "");
@@ -153,19 +153,35 @@ TEST(TestAgentAndGetter, AgentTuple) {
   EXPECT_EQ(std::get<2>(agents).Get(), "2.0");
 }
 
-TEST(TestAgentAndGetter, GetterBasic) {
+TEST(TestAgentAndGetter, GettersMapping) {
   using namespace placeholders;
-  std::tuple<Agent<std::string>, Agent<int>> agents(std::string("1234" /*must explicitly declare as std::string*/), 1);
-  Getter<decltype(agents), 0> getter;
+  std::tuple<Agent<std::string>, Agent<int>, int> agents(std::string("1234" /*must explicitly declare as std::string*/),
+                                                         1, 0);
+  using Getter0 = Getter<decltype(agents), 0>;
+  static_assert(IsGetterDecayV<Getter0>);
+  Getter0 getter;
   ASSERT_FALSE(getter);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   getter.Map(agents);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   EXPECT_EQ(getter.Get(), "1234");
 
-  auto& [v1, v2] = agents;
+  auto& [v1, v2, _] = agents;
+
+  using Getter1 = Getter<decltype(agents), 1>;
+  // There is no Getter2.
+  auto getters = std::make_tuple(0, Getter1{}, Getter0{});
+  static_assert(!IsGetterDecayV<decltype(std::get<0>(std::declval<decltype(getters)>()))>);
+  static_assert(IsGetterDecayV<decltype(std::get<1>(std::declval<decltype(getters)>()))>);
+  static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>);
+  int cnt = placeholders::MapGetters(getters, agents);
+  EXPECT_EQ(cnt, 2);
   v1 = std::string("modified");
+  v2 = 2;
   EXPECT_EQ(getter.Get(), "modified");
+  EXPECT_EQ(placeholders::Get<0>(getters), 0);
+  EXPECT_EQ(placeholders::Get<1>(getters), 2);
+  EXPECT_EQ(placeholders::Get<2>(getters), "modified");
 }
 
 TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
@@ -196,10 +212,12 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
   using namespace placeholders;
   using args = ArgList<int, double, std::string, long, char, float, void>;
   using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
-  using result = details::ReplacePlaceHoldersToGettersT<binds, args>;
+  using result = details::ReplacePlaceHoldersWithGettersT<binds, args>;
 
   using bind_type = std::tuple<Agent<char>, Agent<double>, Agent<float>, Agent<std::string>>;
 
   static_assert(std::is_same_v<result, ArgList<int, Getter<bind_type, 1>, Getter<bind_type, 3>, long,
                                                Getter<bind_type, 0>, Getter<bind_type, 2>>>);
 }
+
+TEST(TestAgentAndGetter, Mapping) {}
