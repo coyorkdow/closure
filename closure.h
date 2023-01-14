@@ -3,6 +3,7 @@
 //
 #pragma once
 
+#include <cstring>
 #include <memory>
 #include <tuple>
 #include <type_traits>
