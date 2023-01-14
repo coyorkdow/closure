@@ -176,12 +176,13 @@ TEST(TestAgentAndGetter, GettersMapping) {
   static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>);
   int cnt = placeholders::MapGetters(getters, agents);
   EXPECT_EQ(cnt, 2);
+  EXPECT_EQ(v2.Get(), std::get<1>(getters).Get());
   v1 = std::string("modified");
   v2 = 2;
-  EXPECT_EQ(getter.Get(), "modified");
+  EXPECT_EQ(getter.Get(), v1.Get());
   EXPECT_EQ(placeholders::Get<0>(getters), 0);
-  EXPECT_EQ(placeholders::Get<1>(getters), 2);
-  EXPECT_EQ(placeholders::Get<2>(getters), "modified");
+  EXPECT_EQ(placeholders::Get<1>(getters), v2.Get());
+  EXPECT_EQ(placeholders::Get<2>(getters), v1.Get());
 }
 
 TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
