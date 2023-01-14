@@ -120,15 +120,14 @@ TEST(TestAgentAndGetter, AgentBasic) {
   EXPECT_TRUE(str.empty());
   EXPECT_TRUE(str_agent);
   // Bind to another string.
-  str_agent = std::string("123");
+  std::string ano_str("123");  // do not use temporary object.
+  str_agent = std::move(ano_str);
   ASSERT_EQ(str_agent.Get(), "123");
   ASSERT_EQ(str, "");  // str_agent now has nothing to do with str.
   Agent<std::string> ano = std::move(str_agent);
   ASSERT_EQ(ano.Get(), "123");
   ASSERT_EQ(str, "");
   ASSERT_FALSE(str_agent);
-  str_agent = std::string("456");
-  ASSERT_EQ(str_agent.Get(), "456");
 }
 
 TEST(TestAgentAndGetter, AgentBasic2) {
@@ -141,22 +140,29 @@ TEST(TestAgentAndGetter, AgentBasic2) {
 
 TEST(TestAgentAndGetter, AgentTuple) {
   using namespace placeholders;
-  std::tuple<Agent<int>, Agent<double>, Agent<std::string>> agents;
-  auto& [v1, v2, v3] = agents;
-  v1 = 1;
-  v2 = 1.5;
-  v3 = std::string("2.0");
-  EXPECT_EQ(v1.Get(), 1);
-  EXPECT_EQ(v2.Get(), 1.5);
-  EXPECT_EQ(v3.Get(), "2.0");
+  std::tuple<Agent<int&>, Agent<double&>, Agent<std::string>> agents;
 
-  EXPECT_EQ(std::get<2>(agents).Get(), "2.0");
+  auto bind_value = [&](auto arg1, auto arg2, auto arg3) {
+    auto& [v1, v2, v3] = agents;
+    auto arg3_dup = arg3;
+    v1 = arg1;
+    v2 = arg2;
+    v3 = std::move(arg3);
+    ASSERT_EQ(arg3, arg3_dup);
+    EXPECT_EQ(v1.Get(), arg1);
+    EXPECT_EQ(v2.Get(), arg2);
+    EXPECT_EQ(v3.Get(), arg3);
+    EXPECT_EQ(std::get<2>(agents).Get(), arg3);
+  };
+  bind_value(1, 1.5, std::string("2.0"));
+  bind_value(3, 3.5, std::string("4.0"));
 }
 
 TEST(TestAgentAndGetter, GettersMapping) {
   using namespace placeholders;
-  std::tuple<Agent<std::string>, Agent<int>, int> agents(std::string("1234" /*must explicitly declare as std::string*/),
-                                                         1, 0);
+  std::string arg1("1234");
+  int arg2 = 1;
+  std::tuple<Agent<std::string&>, Agent<int&>, int> agents(arg1, arg2, 0);
   using Getter0 = Getter<decltype(agents), 0>;
   static_assert(IsGetterDecayV<Getter0>);
   Getter0 getter;
@@ -176,12 +182,16 @@ TEST(TestAgentAndGetter, GettersMapping) {
   static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>);
   int cnt = placeholders::MapGetters(getters, agents);
   EXPECT_EQ(cnt, 2);
-  v1 = std::string("modified");
-  v2 = 2;
-  EXPECT_EQ(getter.Get(), "modified");
+  EXPECT_EQ(v2.Get(), std::get<1>(getters).Get());
+  arg1 = std::string("modified");
+  arg2 = 2;
+  EXPECT_EQ(v2.Get(), 2);
+  EXPECT_EQ(getter.Get(), v1.Get());
   EXPECT_EQ(placeholders::Get<0>(getters), 0);
+  EXPECT_EQ(placeholders::Get<1>(getters), v2.Get());
+  EXPECT_EQ(v2.Get(), 2);
   EXPECT_EQ(placeholders::Get<1>(getters), 2);
-  EXPECT_EQ(placeholders::Get<2>(getters), "modified");
+  EXPECT_EQ(placeholders::Get<2>(getters), v1.Get());
 }
 
 TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {

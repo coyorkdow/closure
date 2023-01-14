@@ -125,21 +125,27 @@ struct IsContinuousSince<ArgList<PHs...>, I> : IsContinuousSinceImpl<ArgList<>, 
 template <class PlaceHoldersList>
 using GetPlaceHolderIndex = typename GetPlaceHolderIndexImpl<PlaceHoldersList>::type;
 
+// Agent stores the reference of the placeholder corresponding argument and the argument can be accessed by Getter.
+// Initialize Agent with a temporary object (prvalue) will occur a dangling reference.
 template <class Tp>
 class Agent {
   class Wrapper {
    public:
-    Wrapper(Tp&& v) noexcept : data_(std::forward<Tp>(v)) {}
+    explicit Wrapper(Tp&& v) noexcept : data_(std::forward<Tp>(v)) {}
     Tp&& data_;
   };
 
  public:
   Agent() noexcept = default;
-  Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
+  explicit Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
+  Agent& operator=(Tp&& v) {
+    ref_ = std::make_unique<Wrapper>(std::forward<Tp>(v));
+    return *this;
+  }
   // Already has the implicit move constructor/assign operator.
 
   explicit operator bool() const noexcept { return static_cast<bool>(ref_); }
-  Tp&& Get() const noexcept { return std::forward<Tp>(ref_->data_); }
+  decltype(auto) Get() const noexcept { return std::forward<Tp>(ref_->data_); }
 
  private:
   std::unique_ptr<Wrapper> ref_;
@@ -171,7 +177,7 @@ class Getter {
  public:
   Getter() noexcept = default;
   Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
-
+  // Mapping a Getter to an Agent.
   void Map(AgentsTuple& tuple) { agents_tuple_ = tuple; }
 
   decltype(auto) Get() const noexcept { return std::get<I>(agents_tuple_.Get()).Get(); }
@@ -488,8 +494,8 @@ class Closure<R(Args...)> {
 
   explicit Closure(impl_type* pimpl) : pimpl_(pimpl) {}
   Closure(const Closure&) = delete;
-  Closure(Closure&&)  noexcept = default;
-  Closure& operator=(Closure&&)  noexcept = default;
+  Closure(Closure&&) noexcept = default;
+  Closure& operator=(Closure&&) noexcept = default;
 
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
 
