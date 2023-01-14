@@ -122,7 +122,7 @@ template <class Tp>
 class Agent {
   class Wrapper {
    public:
-    Wrapper(Tp&& v) : data_(std::forward<Tp>(v)) {}
+    Wrapper(Tp&& v) noexcept : data_(std::forward<Tp>(v)) {}
     Tp&& data_;
   };
 
@@ -131,8 +131,8 @@ class Agent {
   Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
   // Has already has the implicit move constructor/assign operator.
 
-  explicit operator bool() const { return static_cast<bool>(ref_); }
-  Tp&& Get() const { return std::forward<Tp>(ref_->data_); }
+  explicit operator bool() const noexcept { return static_cast<bool>(ref_); }
+  Tp&& Get() const noexcept { return std::forward<Tp>(ref_->data_); }
 
  private:
   std::unique_ptr<Wrapper> ref_;
@@ -165,16 +165,16 @@ class Getter {
  public:
   Getter() = default;
   // allow that the PlaceHolder can be implicitly converted to the Getter.
-  Getter(PH<I>) {}
+  Getter(PH<I>) noexcept {}
 
   void Map(Tuple& tuple) { tuple_agent_ = tuple; }
 
   template <class = std::enable_if_t<IsAgentDecayV<decltype(std::get<I>(std::declval<Tuple&>()))>>>
-  decltype(auto) Get() const {
+  decltype(auto) Get() const noexcept {
     return std::get<I>(tuple_agent_.Get()).Get();
   }
 
-  explicit operator bool() const { return static_cast<bool>(tuple_agent_); }
+  explicit operator bool() const noexcept { return static_cast<bool>(tuple_agent_); }
 
  private:
   Agent<Tuple&> tuple_agent_;
@@ -190,12 +190,12 @@ template <class Tp>
 constexpr auto IsGetterDecayV = IsGetter<std::decay_t<Tp>>{};
 
 template <size_t I, class Tuple, class = std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>>>
-decltype(auto) Get(Tuple&& tuple) {
+decltype(auto) Get(Tuple&& tuple) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple)).Get();
 }
 
 template <size_t I, class Tuple>
-decltype(auto) Get(Tuple&& tuple, ...) {
+decltype(auto) Get(Tuple&& tuple, ...) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple));
 }
 
