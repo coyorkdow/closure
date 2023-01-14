@@ -136,19 +136,30 @@ class Agent {
   };
 
  public:
-  Agent() noexcept = default;
-  explicit Agent(Tp&& v) : ref_(std::make_unique<Wrapper>(std::forward<Tp>(v))) {}
-  Agent& operator=(Tp&& v) {
-    ref_ = std::make_unique<Wrapper>(std::forward<Tp>(v));
+  Agent() noexcept : count_(false), mem_{} {}
+  explicit Agent(Tp&& v) noexcept : count_(true), mem_{} { new (mem_) Wrapper(std::forward<Tp>(v)); }
+  Agent& operator=(Tp&& v) noexcept {
+    count_ = true;
+    new (mem_) Wrapper(std::forward<Tp>(v));
     return *this;
   }
-  // Already has the implicit move constructor/assign operator.
+  Agent(Agent&& rhs) noexcept : count_(rhs.count_), mem_{} {
+    std::memcpy(mem_, rhs.mem_, sizeof(Wrapper));
+    rhs.count_ = false;
+  }
+  Agent& operator=(Agent&& rhs) noexcept {
+    count_ = rhs.count_;
+    std::memcpy(mem_, rhs.mem_, sizeof(Wrapper));
+    rhs.count_ = false;
+    return *this;
+  }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(ref_); }
-  decltype(auto) Get() const noexcept { return std::forward<Tp>(ref_->data_); }
+  explicit operator bool() const noexcept { return count_; }
+  decltype(auto) Get() const noexcept { return std::forward<Tp>(reinterpret_cast<const Wrapper*>(mem_)->data_); }
 
  private:
-  std::unique_ptr<Wrapper> ref_;
+  bool count_;
+  unsigned char mem_[sizeof(Wrapper)];
 };
 
 template <class... Tps>
