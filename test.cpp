@@ -4,6 +4,8 @@
 #include "closure.h"
 #include "gtest/gtest.h"
 
+using namespace closure;
+
 TEST(TestArg, Main) {
   using namespace details;
 
@@ -88,23 +90,22 @@ TEST(TestClosure, Basic) {
   ASSERT_TRUE(v == 1);
 }
 
-TEST(TestPlaceHolder, Basic) {
+TEST(TestPlaceHolder, Sort) {
   using namespace placeholders;
-  static_assert(IsContinuousSince<ArgList<PH<2>>, 2>{});
-  static_assert(IsContinuousSince<ArgList<PH<0>, PH<1>, PH<2>>, 0>{});
-  static_assert(IsContinuousSince<ArgList<PH<3>, PH<1>, PH<0>, PH<2>>, 0>{});
-  static_assert(IsContinuousSince<ArgList<PH<6>, PH<4>, PH<3>, PH<5>>, 3>{});
+  using namespace details;
+  static_assert(std::is_same_v<std::index_sequence<0>, typename sort::TEST_Sort<PH<0>>::type>);
+  static_assert(std::is_same_v<std::index_sequence<1, 2, 3>, typename sort::TEST_Sort<PH<2>, PH<3>, PH<1>>::type>);
+  static_assert(
+      std::is_same_v<std::index_sequence<3, 4, 5, 6>, typename sort::TEST_Sort<PH<6>, PH<4>, PH<3>, PH<5>>::type>);
+  static_assert(std::is_same_v<std::index_sequence<2, 4, 5, 6, 9>,
+                               typename sort::TEST_Sort<PH<5>, PH<6>, PH<4>, PH<9>, PH<2>>::type>);
+  static_assert(std::is_same_v<std::index_sequence<2, 4, 5, 5, 6, 6, 9>,
+                               typename sort::TEST_Sort<PH<6>, PH<5>, PH<6>, PH<4>, PH<9>, PH<5>, PH<2>>::type>);
 
   using within_others = ArgList<int, int, PH<2>, int, PH<3>, PH<0>, int, PH<1>>;
   static_assert(HasPlaceHolderV<within_others>);
 
   static_assert(std::is_same_v<typename FilterPlaceHolder<within_others>::type, ArgList<PH<2>, PH<3>, PH<0>, PH<1>>>);
-}
-
-TEST(TestPlaceHolder, GetIndex) {
-  using namespace placeholders;
-  using L1 = ArgList<PH<2>, PH<3>, PH<0>, PH<1>>;
-  static_assert(std::is_same_v<std::index_sequence<2, 3, 0, 1>, GetPlaceHolderIndex<L1>>);
 }
 
 TEST(TestAgentAndGetter, AgentBasic) {
@@ -127,7 +128,16 @@ TEST(TestAgentAndGetter, AgentBasic) {
   Agent<std::string> ano = std::move(str_agent);
   ASSERT_EQ(ano.Get(), "123");
   ASSERT_EQ(str, "");
+  ASSERT_TRUE(ano);
   ASSERT_FALSE(str_agent);
+  Agent<std::string> ano2;
+  ASSERT_FALSE(ano2);
+  ano2 = std::move(ano);
+  ASSERT_TRUE(ano2);
+  ASSERT_FALSE(ano);
+  ASSERT_EQ(ano2.Get(), "123");
+  ano_str = "456";
+  ASSERT_EQ(ano2.Get(), "456");
 }
 
 TEST(TestAgentAndGetter, AgentBasic2) {
