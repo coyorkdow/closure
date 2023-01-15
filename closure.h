@@ -8,6 +8,8 @@
 #include <tuple>
 #include <type_traits>
 
+namespace closure {
+
 template <class... Tps>
 struct ArgList {
   using tuple_type = std::tuple<Tps...>;
@@ -87,45 +89,6 @@ struct FilterPlaceHolder<ArgList<F, Os...>> {
 template <class ArgL>
 using FilterPlaceHolderT = typename FilterPlaceHolder<ArgL>::type;
 
-template <class, class, size_t>
-struct IsContinuousSinceImpl;
-
-template <size_t FI, class... Before, class... After, size_t I>
-struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<PH<FI>, After...>, I>
-    : IsContinuousSinceImpl<ArgList<Before..., PH<FI>>, ArgList<After...>, I> {};
-
-template <class... Before, class... After, size_t I>
-struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<PH<I>, After...>, I>
-    : IsContinuousSinceImpl<ArgList<>, ArgList<Before..., After...>, I + 1> {};
-
-template <class... Before, size_t I>
-struct IsContinuousSinceImpl<ArgList<Before...>, ArgList<>, I> : std::false_type {};
-
-template <size_t I>
-struct IsContinuousSinceImpl<ArgList<>, ArgList<PH<I>>, I> : std::true_type {};
-
-template <class>
-struct GetPlaceHolderIndexImpl;
-
-template <>
-struct GetPlaceHolderIndexImpl<ArgList<>> {
-  using type = std::index_sequence<>;
-};
-
-template <size_t I, class... Os>
-struct GetPlaceHolderIndexImpl<ArgList<PH<I>, Os...>> {
-  using type = ConcatT<std::index_sequence<I>, typename GetPlaceHolderIndexImpl<ArgList<Os...>>::type>;
-};
-
-template <class, size_t>
-struct IsContinuousSince;
-
-template <class... PHs, size_t I>
-struct IsContinuousSince<ArgList<PHs...>, I> : IsContinuousSinceImpl<ArgList<>, ArgList<PHs...>, I> {};
-
-template <class PlaceHoldersList>
-using GetPlaceHolderIndex = typename GetPlaceHolderIndexImpl<PlaceHoldersList>::type;
-
 // Agent stores the reference of the placeholder corresponding argument and the argument can be accessed by Getter.
 // Initialize Agent with a temporary object (prvalue) will occur a dangling reference.
 template <class Tp>
@@ -137,29 +100,37 @@ class Agent {
   };
 
  public:
-  Agent() noexcept : count_(false), mem_{} {}
-  explicit Agent(Tp&& v) noexcept : count_(true), mem_{} { new (mem_) Wrapper(std::forward<Tp>(v)); }
+  Agent() noexcept : ptr_(nullptr), mem_{} {}
+  explicit Agent(Tp&& v) noexcept : ptr_(reinterpret_cast<Wrapper*>(mem_)), mem_{} {
+    new (mem_) Wrapper(std::forward<Tp>(v));
+  }
   Agent& operator=(Tp&& v) noexcept {
-    count_ = true;
+    ptr_ = reinterpret_cast<Wrapper*>(mem_);
     new (mem_) Wrapper(std::forward<Tp>(v));
     return *this;
   }
-  Agent(Agent&& rhs) noexcept : count_(rhs.count_), mem_{} {
-    std::memcpy(mem_, rhs.mem_, sizeof(Wrapper));
-    rhs.count_ = false;
+  Agent(Agent&& rhs) noexcept : ptr_(nullptr), mem_{} {
+    if (rhs.ptr_) {
+      new (mem_) Wrapper(std::move(*rhs.ptr_));
+      rhs.ptr_ = nullptr;
+      ptr_ = reinterpret_cast<Wrapper*>(mem_);
+    }
   }
   Agent& operator=(Agent&& rhs) noexcept {
-    count_ = rhs.count_;
-    std::memcpy(mem_, rhs.mem_, sizeof(Wrapper));
-    rhs.count_ = false;
+    ptr_ = nullptr;
+    if (rhs.ptr_) {
+      new (mem_) Wrapper(std::move(*rhs.ptr_));
+      rhs.ptr_ = nullptr;
+      ptr_ = reinterpret_cast<Wrapper*>(mem_);
+    }
     return *this;
   }
 
-  explicit operator bool() const noexcept { return count_; }
-  decltype(auto) Get() const noexcept { return std::forward<Tp>(reinterpret_cast<const Wrapper*>(mem_)->data_); }
+  explicit operator bool() const noexcept { return ptr_; }
+  decltype(auto) Get() const noexcept { return std::forward<Tp>(ptr_->data_); }
 
  private:
-  bool count_;
+  Wrapper* ptr_;
   unsigned char mem_[sizeof(Wrapper)];
 };
 
@@ -331,7 +302,7 @@ struct Insert;
 template <size_t I, class Tp, size_t FI, class FT, class... O1, class... O2>
 struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>, Cond::Unchecked> {
   using type = typename Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>,
-                               (I < FI) ? Cond::True : Cond::False>::type;
+                               (I <= FI) ? Cond::True : Cond::False>::type;
 };
 
 template <size_t I, class Tp, class... O1, class... O2>
@@ -371,6 +342,27 @@ auto RemoveIndices(ArgList<Component<I, Tps>...>) -> ArgList<Tps...>;
 
 template <class Arg>
 using RemoveIndicesV = decltype(RemoveIndices(std::declval<Arg>()));
+
+// For sort testing
+
+template <size_t... I, class... Tps>
+auto TEST_RemoveArgs(ArgList<Component<I, Tps>...>) -> std::index_sequence<I...>;
+
+template <size_t N>
+struct TEST_MakeDummyArgs {
+  using type = ConcatT<typename TEST_MakeDummyArgs<N - 1>::type, ArgList<void>>;
+};
+
+template <>
+struct TEST_MakeDummyArgs<0> {
+  using type = ArgList<>;
+};
+
+template <class... PHs>
+struct TEST_Sort {
+  using sorted = SortT<typename TEST_MakeDummyArgs<sizeof...(PHs)>::type, ArgList<PHs...>>;
+  using type = decltype(TEST_RemoveArgs(std::declval<sorted>()));
+};
 
 }  // namespace sort
 
@@ -423,6 +415,10 @@ using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<
 
 template <class Prefix, class ArgL>
 using PlaceHoldersAgentsT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_type;
+
+}  // namespace details
+
+namespace __closure {
 
 template <class>
 class ClosureImplBase;
@@ -485,14 +481,14 @@ NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args
       func, std::forward<Binds>(bind_args)...);
 }
 
-}  // namespace details
+}  // namespace __closure
 
 template <class>
 class Closure;
 
 template <class R, class... Args>
 class Closure<R(Args...)> {
-  using impl_type = details::ClosureImplBase<R(Args...)>;
+  using impl_type = __closure::ClosureImplBase<R(Args...)>;
 
  public:
   using result_type = R;
@@ -517,7 +513,9 @@ class Closure<R(Args...)> {
 template <class R, class... Args, class... Binds>
 decltype(auto) MakeClosure(R (*func)(Args...), Binds&&... bind_args) {
   using closure_args = details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<Args...>>;
-  auto res = details::NewClosureImpl(closure_args{}, func, std::forward<Binds>(bind_args)...);
+  auto res = __closure::NewClosureImpl(closure_args{}, func, std::forward<Binds>(bind_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(res);
 }
+
+}  // namespace closure
