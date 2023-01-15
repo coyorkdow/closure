@@ -238,6 +238,5 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
 
   static_assert(std::is_same_v<result, ArgList<int, Getter<bind_type, 1>, Getter<bind_type, 3>, long,
                                                Getter<bind_type, 0>, Getter<bind_type, 2>>>);
+  static_assert(std::is_same_v<bind_type, details::PlaceHoldersAgentsT<binds, args>>);
 }
-
-TEST(TestAgentAndGetter, Mapping) {}

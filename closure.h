@@ -405,6 +405,8 @@ struct ReplacePlaceHoldersWithGetters {
   using phl = placeholders::FilterPlaceHolderT<Prefix>;
   using sorted = SortPlaceHoldersCorrespondTypesT<ph_args, phl>;
 
+  // TODO: For the discontinuous placeholders, the agent should filling to continuous.
+
  public:
   using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
   using agents_type = placeholders::MakeAgentsT<sorted>;
