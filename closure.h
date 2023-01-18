@@ -8,12 +8,37 @@
 #include <tuple>
 #include <type_traits>
 
+#ifdef __CLOSTD
+#error "Macro __CLOSTD is already defined"
+#endif
+
 namespace closure {
 
+#if __cplusplus < 201703L
+#define __CLOSTD __clostd
+
+namespace __clostd {
+
+template <class Tuple>
+constexpr auto tuple_size_v = std::tuple_size<Tuple>::value;
+
+template <class From, class To>
+constexpr auto is_convertible_v = std::is_convertible<From, To>::value;
+
+template <class Tp1, class Tp2>
+constexpr auto is_same_v = std::is_same<Tp1, Tp2>::value;
+
+template <class Tp>
+constexpr auto is_const_v = std::is_const<Tp>::value;
+
+}  // namespace __clostd
+
+#else
+#define __CLOSTD std
+#endif
+
 template <class... Tps>
-struct ArgList {
-  using tuple_type = std::tuple<Tps...>;
-};
+struct ArgList {};
 
 template <class, class>
 struct Concat;
@@ -36,8 +61,11 @@ struct Concat<std::index_sequence<I1...>, std::index_sequence<I2...>> {
 template <class L1, class L2>
 using ConcatT = typename Concat<L1, L2>::type;
 
-namespace placeholders {
+// When the placeholders is discontinuous, the closure will have several superfluous parameters which can take any
+// types. We use Auto to express them.
+struct Auto {};
 
+namespace placeholders {
 template <size_t>
 struct PH {};
 
@@ -135,7 +163,7 @@ class Agent {
 };
 
 template <>
-class Agent<void> {
+class Agent<Auto> {
  public:
   constexpr Agent() noexcept = default;
   template <class Tp>
@@ -162,7 +190,7 @@ constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
 
 template <class AgentsTuple, size_t I>
 class Getter {
-  static_assert(I < std::tuple_size_v<AgentsTuple>);
+  static_assert(I < __CLOSTD::tuple_size_v<AgentsTuple>, "the index of Getter is out of bounds");
   static_assert(IsAgentDecayV<decltype(std::get<I>(std::declval<AgentsTuple&>()))>, "Getter's target is not an agent");
 
  public:
@@ -208,7 +236,7 @@ int MapGetters(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& a
 
 template <class GettersTuple, class AgentsTuple>
 int MapGetters(GettersTuple&& getters, AgentsTuple& agents) {
-  constexpr auto size = std::tuple_size_v<std::decay_t<GettersTuple>>;
+  constexpr auto size = __CLOSTD::tuple_size_v<std::decay_t<GettersTuple>>;
   return MapGetters(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
 }
 
@@ -244,7 +272,7 @@ struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<>> : std::false_type {};
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>
-    : std::conditional_t<placeholders::IsPlaceHolderV<F1> || std::is_convertible_v<F1, F2>,
+    : std::conditional_t<placeholders::IsPlaceHolderV<F1> || __CLOSTD::is_convertible_v<F1, F2>,
                          IsPrefixWeak<ArgList<Os1...>, ArgList<Os2...>>, std::false_type> {};
 
 template <class, class>
@@ -269,7 +297,8 @@ struct RemovePrefixWeak<ArgList<>, ArgList<Args2...>> {
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct RemovePrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>> {
-  static_assert(IsPrefixWeakV<ArgList<F1, Os1...>, ArgList<F2, Os2...>>);
+  static_assert(IsPrefixWeakV<ArgList<F1, Os1...>, ArgList<F2, Os2...>>,
+                "template argument 1 is not the weak prefix of template argument 2");
   using type = typename RemovePrefixWeak<ArgList<Os1...>, ArgList<Os2...>>::type;
 };
 
@@ -362,6 +391,9 @@ struct Unique<ArgList<>> {
   using type = ArgList<>;
 };
 
+template <class Sorted>
+using UniqueT = typename Unique<Sorted>::type;
+
 template <class Uniqued>
 struct Fill;
 
@@ -372,15 +404,25 @@ struct Fill<ArgList<Component<I, Tp1>, Component<I + 1, Tp2>, Os...>> {
 
 template <size_t I1, class Tp1, size_t I2, class Tp2, class... Os>
 struct Fill<ArgList<Component<I1, Tp1>, Component<I2, Tp2>, Os...>> {
-  static_assert(I1 < I2);
+  static_assert(I1 < I2, "the given argument is not uniqued");
   using type = ConcatT<ArgList<Component<I1, Tp1>>,
-                       typename Fill<ArgList<Component<I1 + 1, void>, Component<I2, Tp2>, Os...>>::type>;
+                       typename Fill<ArgList<Component<I1 + 1, Auto>, Component<I2, Tp2>, Os...>>::type>;
 };
 
 template <size_t I, class Tp>
 struct Fill<ArgList<Component<I, Tp>>> {
   using type = ArgList<Component<I, Tp>>;
 };
+
+template <class Tp, class... Os>
+auto FillFromZero(ArgList<Component<0, Tp>, Os...>) -> typename Fill<ArgList<Component<0, Tp>, Os...>>::type;
+
+template <size_t I, class Tp, class... Os, class = std::enable_if_t<I != 0>>
+auto FillFromZero(ArgList<Component<I, Tp>, Os...>) ->
+    typename Fill<ArgList<Component<0, Auto>, Component<I, Tp>, Os...>>::type;
+
+template <class Uniqued>
+using FillFromZeroT = decltype(FillFromZero(std::declval<Uniqued>()));
 
 template <size_t... I, class... Tps>
 auto RemoveIndices(ArgList<Component<I, Tps>...>) -> ArgList<Tps...>;
@@ -412,15 +454,16 @@ struct TEST_Sort {
 }  // namespace sort
 
 template <class ArgL, class PHL>
-struct SortPlaceHoldersCorrespondTypes;
+struct SortUniqueFillPlaceHoldersCorrespondTypes;
 
 template <class... Tps, size_t... I>
-struct SortPlaceHoldersCorrespondTypes<ArgList<Tps...>, ArgList<placeholders::PH<I>...>> {
-  using type = sort::RemoveIndicesV<sort::SortT<ArgList<Tps...>, ArgList<placeholders::PH<I>...>>>;
+struct SortUniqueFillPlaceHoldersCorrespondTypes<ArgList<Tps...>, ArgList<placeholders::PH<I>...>> {
+  using type = sort::RemoveIndicesV<
+      sort::FillFromZeroT<sort::UniqueT<sort::SortT<ArgList<Tps...>, ArgList<placeholders::PH<I>...>>>>>;
 };
 
 template <class ArgL, class PHL>
-using SortPlaceHoldersCorrespondTypesT = typename SortPlaceHoldersCorrespondTypes<ArgL, PHL>::type;
+using SortUniqueFillPlaceHoldersCorrespondTypesT = typename SortUniqueFillPlaceHoldersCorrespondTypes<ArgL, PHL>::type;
 
 template <class ArgL, class Tuple>
 struct ReplacePlaceHoldersWithGettersImpl;
@@ -443,12 +486,12 @@ struct ReplacePlaceHoldersWithGettersImpl<ArgList<>, Tuple> {
 
 template <class Prefix, class ArgL>
 struct ReplacePlaceHoldersWithGetters {
-  static_assert(IsPrefixWeakV<Prefix, ArgL>);
+  static_assert(IsPrefixWeakV<Prefix, ArgL>, "template argument 1 is not the weak prefix of template argument 2");
 
  private:
   using ph_args = GetPlaceHoldersCorrespondTypesT<Prefix, ArgL>;
   using phl = placeholders::FilterPlaceHolderT<Prefix>;
-  using sorted = SortPlaceHoldersCorrespondTypesT<ph_args, phl>;
+  using sorted = SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
 
   // TODO: For the discontinuous placeholders, the agent should filling to continuous.
 
@@ -541,9 +584,13 @@ class Closure<R(Args...)> {
   using result_type = R;
   using arguments_type = ArgList<Args...>;
 
+  Closure() = default;
+
   template <class... FuncArgs, class... Binds>
   Closure(R (*func)(FuncArgs...), Binds&&... bind_args) {
-    static_assert(std::is_same_v<arguments_type, details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>);
+    static_assert(
+        __CLOSTD::is_same_v<arguments_type, details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>,
+        "the given arguments is not match the type of Closure");
     pimpl_.reset(NewClosureImpl(arguments_type{}, func, std::forward<Binds>(bind_args)...));
   }
 
