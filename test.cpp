@@ -50,7 +50,7 @@ std::size_t sum(const int& v1, double v2, int v3, int v4) { return v1 + v2 + v3 
 
 int forwarding_test(std::unique_ptr<int> p) { return *p.get(); }
 
-int calculate_sum(std::string exp) {
+int calculate_sum(const std::string& exp) {
   int ans = 0;
   int cur_num = 0;
   for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
@@ -226,6 +226,16 @@ TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
   static_assert(std::is_same_v<result, ArgList<char, double, float, std::string>>);
 
   static_assert(std::is_same_v<details::SortPlaceHoldersCorrespondTypesT<ArgList<int>, ArgList<PH<0>>>, ArgList<int>>);
+}
+
+TEST(TestAgentAndGetter, StableSort) {
+  using namespace placeholders;
+  using args = ArgList<int, double, std::string, long, char, float, void*>;
+  using binds = ArgList<PH<3>, PH<1>, PH<3>, PH<1>, PH<2>, PH<5>, PH<2>>;
+  using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
+  using phl = FilterPlaceHolderT<binds>;
+  using result = typename details::SortPlaceHoldersCorrespondTypes<ph_args, phl>::type;
+  static_assert(std::is_same_v<result, ArgList<double, long, char, void*, int, std::string, float>>);
 }
 
 TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {

@@ -134,6 +134,14 @@ class Agent {
   unsigned char mem_[sizeof(Wrapper)];
 };
 
+template <>
+class Agent<void> {
+ public:
+  constexpr Agent() noexcept = default;
+  template <class Tp>
+  explicit constexpr Agent(Tp&&) noexcept {}
+};
+
 template <class... Tps>
 auto MakeAgents(std::tuple<Tps...>) -> std::tuple<Agent<Tps>...>;
 
@@ -231,13 +239,13 @@ struct IsPrefixWeak;
 template <class... Args2>
 struct IsPrefixWeak<ArgList<>, ArgList<Args2...>> : std::true_type {};
 
-template <class F1, class... O1>
-struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<>> : std::false_type {};
+template <class F1, class... Os1>
+struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<>> : std::false_type {};
 
-template <class F1, class... O1, class F2, class... O2>
-struct IsPrefixWeak<ArgList<F1, O1...>, ArgList<F2, O2...>>
+template <class F1, class... Os1, class F2, class... Os2>
+struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>
     : std::conditional_t<placeholders::IsPlaceHolderV<F1> || std::is_convertible_v<F1, F2>,
-                         IsPrefixWeak<ArgList<O1...>, ArgList<O2...>>, std::false_type> {};
+                         IsPrefixWeak<ArgList<Os1...>, ArgList<Os2...>>, std::false_type> {};
 
 template <class, class>
 constexpr bool IsPrefixWeakV = false;
@@ -259,10 +267,10 @@ struct RemovePrefixWeak<ArgList<>, ArgList<Args2...>> {
   using type = ArgList<Args2...>;
 };
 
-template <class F1, class... O1, class F2, class... O2>
-struct RemovePrefixWeak<ArgList<F1, O1...>, ArgList<F2, O2...>> {
-  static_assert(IsPrefixWeakV<ArgList<F1, O1...>, ArgList<F2, O2...>>);
-  using type = typename RemovePrefixWeak<ArgList<O1...>, ArgList<O2...>>::type;
+template <class F1, class... Os1, class F2, class... Os2>
+struct RemovePrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>> {
+  static_assert(IsPrefixWeakV<ArgList<F1, Os1...>, ArgList<F2, Os2...>>);
+  using type = typename RemovePrefixWeak<ArgList<Os1...>, ArgList<Os2...>>::type;
 };
 
 template <class Prefix, class ArgL>
@@ -271,14 +279,14 @@ using RemovePrefixWeakT = typename RemovePrefixWeak<Prefix, ArgL>::type;
 template <class Prefix, class ArgL>
 struct GetPlaceHoldersCorrespondTypes;
 
-template <size_t I, class... O1, class F2, class... O2>
-struct GetPlaceHoldersCorrespondTypes<ArgList<placeholders::PH<I>, O1...>, ArgList<F2, O2...>> {
-  using type = ConcatT<ArgList<F2>, typename GetPlaceHoldersCorrespondTypes<ArgList<O1...>, ArgList<O2...>>::type>;
+template <size_t I, class... Os1, class F2, class... Os2>
+struct GetPlaceHoldersCorrespondTypes<ArgList<placeholders::PH<I>, Os1...>, ArgList<F2, Os2...>> {
+  using type = ConcatT<ArgList<F2>, typename GetPlaceHoldersCorrespondTypes<ArgList<Os1...>, ArgList<Os2...>>::type>;
 };
 
-template <class F1, class... O1, class F2, class... O2>
-struct GetPlaceHoldersCorrespondTypes<ArgList<F1, O1...>, ArgList<F2, O2...>> {
-  using type = typename GetPlaceHoldersCorrespondTypes<ArgList<O1...>, ArgList<O2...>>::type;
+template <class F1, class... Os1, class F2, class... Os2>
+struct GetPlaceHoldersCorrespondTypes<ArgList<F1, Os1...>, ArgList<F2, Os2...>> {
+  using type = typename GetPlaceHoldersCorrespondTypes<ArgList<Os1...>, ArgList<Os2...>>::type;
 };
 
 template <class... Tps>
@@ -296,28 +304,28 @@ enum class Cond { Unchecked, False, True };
 template <size_t I, class Tp>
 struct Component {};
 
-template <class Com, class SortedBefore, class SortedAfter, Cond = Cond::Unchecked>
+template <class Com, class Sorted, Cond = Cond::Unchecked>
 struct Insert;
 
-template <size_t I, class Tp, size_t FI, class FT, class... O1, class... O2>
-struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>, Cond::Unchecked> {
-  using type = typename Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>,
-                               (I <= FI) ? Cond::True : Cond::False>::type;
+template <size_t I, class Tp, size_t FI, class FT, class... Os>
+struct Insert<Component<I, Tp>, ArgList<Component<FI, FT>, Os...>, Cond::Unchecked> {
+  using type =
+      typename Insert<Component<I, Tp>, ArgList<Component<FI, FT>, Os...>, (I <= FI) ? Cond::True : Cond::False>::type;
 };
 
-template <size_t I, class Tp, class... O1, class... O2>
-struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<O2...>, Cond::True> {
-  using type = ArgList<O1..., Component<I, Tp>, O2...>;
+template <size_t I, class Tp, class... Os>
+struct Insert<Component<I, Tp>, ArgList<Os...>, Cond::True> {
+  using type = ArgList<Component<I, Tp>, Os...>;
 };
 
-template <size_t I, class Tp, size_t FI, class FT, class... O1, class... O2>
-struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<Component<FI, FT>, O2...>, Cond::False> {
-  using type = typename Insert<Component<I, Tp>, ArgList<O1..., Component<FI, FT>>, ArgList<O2...>>::type;
+template <size_t I, class Tp, size_t FI, class FT, class... Os>
+struct Insert<Component<I, Tp>, ArgList<Component<FI, FT>, Os...>, Cond::False> {
+  using type = ConcatT<ArgList<Component<FI, FT>>, typename Insert<Component<I, Tp>, ArgList<Os...>>::type>;
 };
 
-template <size_t I, class Tp, class... O1>
-struct Insert<Component<I, Tp>, ArgList<O1...>, ArgList<>> {
-  using type = ArgList<O1..., Component<I, Tp>>;
+template <size_t I, class Tp>
+struct Insert<Component<I, Tp>, ArgList<>> {
+  using type = ArgList<Component<I, Tp>>;
 };
 
 template <class ArgL, class PHL>
@@ -325,8 +333,7 @@ struct Sort;
 
 template <class Tp, class... Tps, size_t FI, class... Os>
 struct Sort<ArgList<Tp, Tps...>, ArgList<placeholders::PH<FI>, Os...>> {
-  using type =
-      typename Insert<Component<FI, Tp>, ArgList<>, typename Sort<ArgList<Tps...>, ArgList<Os...>>::type>::type;
+  using type = typename Insert<Component<FI, Tp>, typename Sort<ArgList<Tps...>, ArgList<Os...>>::type>::type;
 };
 
 template <class Tp, size_t FI>
@@ -336,6 +343,44 @@ struct Sort<ArgList<Tp>, ArgList<placeholders::PH<FI>>> {
 
 template <class ArgL, class PHL>
 using SortT = typename Sort<ArgL, PHL>::type;
+
+template <class Sorted>
+struct Unique;
+
+template <size_t I, class Tp1, class Tp2, class... Os>
+struct Unique<ArgList<Component<I, Tp1>, Component<I, Tp2>, Os...>> {
+  using type = typename Unique<ArgList<Component<I, Tp1>, Os...>>::type;
+};
+
+template <size_t I, class Tp, class... Os>
+struct Unique<ArgList<Component<I, Tp>, Os...>> {
+  using type = ConcatT<ArgList<Component<I, Tp>>, typename Unique<ArgList<Os...>>::type>;
+};
+
+template <>
+struct Unique<ArgList<>> {
+  using type = ArgList<>;
+};
+
+template <class Uniqued>
+struct Fill;
+
+template <size_t I, class Tp1, class Tp2, class... Os>
+struct Fill<ArgList<Component<I, Tp1>, Component<I + 1, Tp2>, Os...>> {
+  using type = ConcatT<ArgList<Component<I, Tp1>>, typename Fill<ArgList<Component<I + 1, Tp2>, Os...>>::type>;
+};
+
+template <size_t I1, class Tp1, size_t I2, class Tp2, class... Os>
+struct Fill<ArgList<Component<I1, Tp1>, Component<I2, Tp2>, Os...>> {
+  static_assert(I1 < I2);
+  using type = ConcatT<ArgList<Component<I1, Tp1>>,
+                       typename Fill<ArgList<Component<I1 + 1, void>, Component<I2, Tp2>, Os...>>::type>;
+};
+
+template <size_t I, class Tp>
+struct Fill<ArgList<Component<I, Tp>>> {
+  using type = ArgList<Component<I, Tp>>;
+};
 
 template <size_t... I, class... Tps>
 auto RemoveIndices(ArgList<Component<I, Tps>...>) -> ArgList<Tps...>;
