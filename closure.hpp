@@ -1,258 +1,17 @@
 //
 // Created by Youtao Guo on 2022/12/27
 //
+
 #pragma once
 
 #include <cstring>
 #include <memory>
 #include <tuple>
-#include <type_traits>
 
-#ifdef __CLOSTD
-#error "Macro __CLOSTD is already defined"
-#endif
+#include "closure/placeholders.hpp"
+#include "closure/traits.hpp"
 
 namespace closure {
-
-#if __cplusplus < 201703L
-#define __CLOSTD __clostd
-
-namespace __clostd {
-
-template <class Tuple>
-constexpr auto tuple_size_v = std::tuple_size<Tuple>::value;
-
-template <class From, class To>
-constexpr auto is_convertible_v = std::is_convertible<From, To>::value;
-
-template <class Tp1, class Tp2>
-constexpr auto is_same_v = std::is_same<Tp1, Tp2>::value;
-
-template <class Tp>
-constexpr auto is_const_v = std::is_const<Tp>::value;
-
-}  // namespace __clostd
-
-#else
-#define __CLOSTD std
-#endif
-
-template <class... Tps>
-struct ArgList {};
-
-template <class, class>
-struct Concat;
-
-template <class... Tps1, class... Tps2>
-struct Concat<ArgList<Tps1...>, ArgList<Tps2...>> {
-  using type = ArgList<Tps1..., Tps2...>;
-};
-
-template <class... Tps1, class... Tps2>
-struct Concat<std::tuple<Tps1...>, std::tuple<Tps2...>> {
-  using type = std::tuple<Tps1..., Tps2...>;
-};
-
-template <size_t... I1, size_t... I2>
-struct Concat<std::index_sequence<I1...>, std::index_sequence<I2...>> {
-  using type = std::index_sequence<I1..., I2...>;
-};
-
-template <class L1, class L2>
-using ConcatT = typename Concat<L1, L2>::type;
-
-// When the placeholders is discontinuous, the closure will have several superfluous parameters which can take any
-// types. We use Auto to express them.
-struct Auto {};
-
-namespace placeholders {
-template <size_t>
-struct PH {};
-
-template <class>
-struct IsPlaceHolder : std::false_type {};
-
-template <size_t I>
-struct IsPlaceHolder<PH<I>> : std::true_type {};
-
-template <class Tp>
-constexpr auto IsPlaceHolderV = IsPlaceHolder<Tp>{};
-
-template <class>
-struct HasPlaceHolder;
-
-template <>
-struct HasPlaceHolder<ArgList<>> : std::false_type {};
-
-template <size_t I, class... Tps>
-struct HasPlaceHolder<ArgList<PH<I>, Tps...>> : std::true_type {};
-
-template <class F, class... Os>
-struct HasPlaceHolder<ArgList<F, Os...>> : HasPlaceHolder<ArgList<Os...>> {};
-
-template <class... Tps>
-constexpr auto HasPlaceHolderV = HasPlaceHolder<ArgList<Tps...>>{};
-
-template <class... Tps>
-constexpr auto HasPlaceHolderV<ArgList<Tps...>> = HasPlaceHolder<ArgList<Tps...>>{};
-
-template <class>
-struct FilterPlaceHolder;
-
-template <>
-struct FilterPlaceHolder<ArgList<>> {
-  using type = ArgList<>;
-};
-
-template <size_t I, class... Tps>
-struct FilterPlaceHolder<ArgList<PH<I>, Tps...>> {
-  using type = ConcatT<ArgList<PH<I>>, typename FilterPlaceHolder<ArgList<Tps...>>::type>;
-};
-
-template <class F, class... Os>
-struct FilterPlaceHolder<ArgList<F, Os...>> {
-  using type = typename FilterPlaceHolder<ArgList<Os...>>::type;
-};
-
-template <class ArgL>
-using FilterPlaceHolderT = typename FilterPlaceHolder<ArgL>::type;
-
-// Agent stores the reference of the placeholder corresponding argument and the argument can be accessed by Getter.
-// Initialize Agent with a temporary object (prvalue) will occur a dangling reference.
-template <class Tp>
-class Agent {
-  class Wrapper {
-   public:
-    explicit Wrapper(Tp&& v) noexcept : data_(std::forward<Tp>(v)) {}
-    Tp&& data_;
-  };
-
- public:
-  Agent() noexcept : ptr_(nullptr), mem_{} {}
-  explicit Agent(Tp&& v) noexcept : ptr_(reinterpret_cast<Wrapper*>(mem_)), mem_{} {
-    new (mem_) Wrapper(std::forward<Tp>(v));
-  }
-  Agent& operator=(Tp&& v) noexcept {
-    ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    new (mem_) Wrapper(std::forward<Tp>(v));
-    return *this;
-  }
-  Agent(Agent&& rhs) noexcept : ptr_(nullptr), mem_{} {
-    if (rhs.ptr_) {
-      new (mem_) Wrapper(std::move(*rhs.ptr_));
-      rhs.ptr_ = nullptr;
-      ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    }
-  }
-  Agent& operator=(Agent&& rhs) noexcept {
-    ptr_ = nullptr;
-    if (rhs.ptr_) {
-      new (mem_) Wrapper(std::move(*rhs.ptr_));
-      rhs.ptr_ = nullptr;
-      ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    }
-    return *this;
-  }
-
-  explicit operator bool() const noexcept { return ptr_; }
-  decltype(auto) Get() const noexcept { return std::forward<Tp>(ptr_->data_); }
-
- private:
-  Wrapper* ptr_;
-  unsigned char mem_[sizeof(Wrapper)];
-};
-
-template <>
-class Agent<Auto> {
- public:
-  constexpr Agent() noexcept = default;
-  template <class Tp>
-  explicit constexpr Agent(Tp&&) noexcept {}
-};
-
-template <class... Tps>
-auto MakeAgents(std::tuple<Tps...>) -> std::tuple<Agent<Tps>...>;
-
-template <class... Tps>
-auto MakeAgents(ArgList<Tps...>) -> std::tuple<Agent<Tps>...>;
-
-template <class Tuple>
-using MakeAgentsT = decltype(MakeAgents(std::declval<Tuple>()));
-
-template <class>
-struct IsAgent : std::false_type {};
-
-template <class Tp>
-struct IsAgent<Agent<Tp>> : std::true_type {};
-
-template <class Tp>
-constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
-
-template <class AgentsTuple, size_t I>
-class Getter {
-  static_assert(I < __CLOSTD::tuple_size_v<AgentsTuple>, "the index of Getter is out of bounds");
-  static_assert(IsAgentDecayV<decltype(std::get<I>(std::declval<AgentsTuple&>()))>, "Getter's target is not an agent");
-
- public:
-  Getter() noexcept = default;
-  Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
-  // Mapping a Getter to an Agent.
-  void Map(AgentsTuple& tuple) { agents_tuple_ = tuple; }
-
-  decltype(auto) Get() const noexcept { return std::get<I>(agents_tuple_.Get()).Get(); }
-
-  explicit operator bool() const noexcept { return static_cast<bool>(agents_tuple_); }
-
- private:
-  Agent<AgentsTuple&> agents_tuple_;
-};
-
-template <class>
-struct IsGetter : std::false_type {};
-
-template <class Tuple, size_t I>
-struct IsGetter<Getter<Tuple, I>> : std::true_type {};
-
-template <class Tp>
-constexpr auto IsGetterDecayV = IsGetter<std::decay_t<Tp>>{};
-
-template <size_t I, class GettersTuple, class AgentsTuple,
-          std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<GettersTuple>()))>, int> = 0>
-void TryMap(GettersTuple&& getters, AgentsTuple& agents, int& cnt) {
-  std::get<I>(std::forward<GettersTuple>(getters)).Map(agents);
-  cnt++;
-}
-
-template <size_t I, class... Tps>
-constexpr void TryMap(Tps&&...) noexcept {}
-
-template <size_t... I, class GettersTuple, class AgentsTuple>
-int MapGetters(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& agents) {
-  using expander = int[];
-  int cnt = 0;
-  (void)expander{(TryMap<I>(std::forward<GettersTuple>(getters), agents, cnt), 0)...};
-  return cnt;
-}
-
-template <class GettersTuple, class AgentsTuple>
-int MapGetters(GettersTuple&& getters, AgentsTuple& agents) {
-  constexpr auto size = __CLOSTD::tuple_size_v<std::decay_t<GettersTuple>>;
-  return MapGetters(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
-}
-
-template <size_t I, class Tuple,
-          std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
-decltype(auto) Get(Tuple&& tuple) noexcept {
-  return std::get<I>(std::forward<Tuple>(tuple)).Get();
-}
-
-template <size_t I, class Tuple,
-          std::enable_if_t<!IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
-decltype(auto) Get(Tuple&& tuple) noexcept {
-  return std::get<I>(std::forward<Tuple>(tuple));
-}
-
-};  // namespace placeholders
 
 template <size_t I>
 constexpr auto PlaceHolder() noexcept {
@@ -262,13 +21,10 @@ constexpr auto PlaceHolder() noexcept {
 namespace details {
 
 template <class, class>
-struct IsPrefixWeak;
+struct IsPrefixWeak : std::false_type {};
 
 template <class... Args2>
 struct IsPrefixWeak<ArgList<>, ArgList<Args2...>> : std::true_type {};
-
-template <class F1, class... Os1>
-struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<>> : std::false_type {};
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>
@@ -283,7 +39,7 @@ constexpr bool IsPrefixWeakV<ArgList<Args1...>, ArgList<Args2...>> =
     IsPrefixWeak<ArgList<Args1...>, ArgList<Args2...>>::value;
 
 template <class Prefix, class ArgL>
-struct RemovePrefixWeak {};
+struct RemovePrefixWeak;
 
 template <>
 struct RemovePrefixWeak<ArgList<>, ArgList<>> {
@@ -394,7 +150,7 @@ struct Unique<ArgList<>> {
 template <class Sorted>
 using UniqueT = typename Unique<Sorted>::type;
 
-template <class Uniqued>
+template <class Uniqued, class = void>
 struct Fill;
 
 template <size_t I, class Tp1, class Tp2, class... Os>
@@ -403,8 +159,7 @@ struct Fill<ArgList<Component<I, Tp1>, Component<I + 1, Tp2>, Os...>> {
 };
 
 template <size_t I1, class Tp1, size_t I2, class Tp2, class... Os>
-struct Fill<ArgList<Component<I1, Tp1>, Component<I2, Tp2>, Os...>> {
-  static_assert(I1 < I2, "the given argument is not uniqued");
+struct Fill<ArgList<Component<I1, Tp1>, Component<I2, Tp2>, Os...>, std::enable_if_t<I1 + 1 < I2>> {
   using type = ConcatT<ArgList<Component<I1, Tp1>>,
                        typename Fill<ArgList<Component<I1 + 1, Auto>, Component<I2, Tp2>, Os...>>::type>;
 };
@@ -417,7 +172,7 @@ struct Fill<ArgList<Component<I, Tp>>> {
 template <class Tp, class... Os>
 auto FillFromZero(ArgList<Component<0, Tp>, Os...>) -> typename Fill<ArgList<Component<0, Tp>, Os...>>::type;
 
-template <size_t I, class Tp, class... Os, class = std::enable_if_t<I != 0>>
+template <size_t I, class Tp, class... Os /*, class = std::enable_if_t<I != 0>*/>
 auto FillFromZero(ArgList<Component<I, Tp>, Os...>) ->
     typename Fill<ArgList<Component<0, Auto>, Component<I, Tp>, Os...>>::type;
 
@@ -493,8 +248,6 @@ struct ReplacePlaceHoldersWithGetters {
   using phl = placeholders::FilterPlaceHolderT<Prefix>;
   using sorted = SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
 
-  // TODO: For the discontinuous placeholders, the agent should filling to continuous.
-
  public:
   using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
   using agents_type = placeholders::MakeAgentsT<sorted>;
@@ -524,52 +277,106 @@ class ClosureImplBase<R(Args...)> {
   virtual result_type Run(Args...) = 0;
 };
 
-template <class...>
-class FuncClosure;
+template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
+class ClosureImpl;
 
-template <class R, class... Args, class... CallableArgs, class... Binds>
-class FuncClosure<R (*)(Args...), R (*)(CallableArgs...), Binds...> : public ClosureImplBase<R(Args...)> {
+// Overload for function pointer and functor
+// It is guaranteed that all the StoredArgs... are non-reference types.
+template <class R, class... Args, class Callable, class... StoredArgs>
+class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
+                  std::enable_if_t<__CLOSTD::is_function_v<std::remove_pointer_t<Callable>> ||
+                                   traits::IsFunctorV<std::remove_reference_t<Callable>>>>
+    : public ClosureImplBase<R(Args...)> {
+  using base = ClosureImplBase<R(Args...)>;
+
  public:
-  using result_type = R;
-  using callable_type = R (*)(CallableArgs...);
-  using binder_type = std::tuple<Binds...>;
+  using callee_type = Callable;
+  using stored_types = std::tuple<StoredArgs...>;
 
-  template <class... BindArgs, class = std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BindArgs>...>>>
-  explicit FuncClosure(callable_type f, BindArgs&&... args)
-      : callable_(f), bind_list_(std::forward<BindArgs>(args)...) {}
+  static_assert(
+      __CLOSTD::is_convertible_v<
+          __CLOSTD::invoke_result_t<
+              callee_type, std::add_lvalue_reference_t<StoredArgs>... /*stored args are passed by lvalue*/, Args...>,
+          typename base::result_type>,
+      "the result type of the given callee is not match");
 
-  result_type Run(Args... args) override {
-    return RunHelper(std::index_sequence_for<Binds...>{}, std::forward<Args>(args)...);
+  template <class Callee, class... BoundArgs,
+            std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BoundArgs>...>, int> = 0>
+  explicit ClosureImpl(Callee&& f, BoundArgs&&... args)
+      : callable_(std::forward<Callee>(f)), stored_list_(std::forward<BoundArgs>(args)...) {}
+
+  typename base::result_type Run(Args... args) override {
+    return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
   }
 
  private:
   template <std::size_t... I>
-  result_type RunHelper(std::index_sequence<I...>, Args... args) {
-    return callable_(std::get<I>(bind_list_)..., std::forward<Args>(args)...);
+  decltype(auto) RunHelper(std::index_sequence<I...>, Args... args) {
+    return callable_(std::get<I>(stored_list_)..., std::forward<Args>(args)...);
   }
 
-  callable_type callable_;
-  binder_type bind_list_;
+  callee_type callable_;
+  stored_types stored_list_;
 };
 
-template <class...>
-class FuncClosureWithPlaceHolders;  // TODO
+// TODO Overload for class method (non const)
+// It is guaranteed that the CPtr and all StoredArgs... are non-reference types.
+template <class R, class... Args, class Class, class CPtr, class... CallableArgs, class... StoredArgs>
+class ClosureImpl<R(Args...), R (Class::*)(CallableArgs...), ArgList<CPtr, StoredArgs...>>
+    : public ClosureImplBase<R(Args...)> {
+  using base = ClosureImplBase<R(Args...)>;
 
-template <class R, class... ClosureArgs, class... Args, class... Binds>
-std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<Binds>...>,
-                 FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>*>
-NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args) {
-  return new FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>(
-      func, std::forward<Binds>(bind_args)...);
+ public:
+  using callee_type = R (Class::*)(CallableArgs...);
+  using stored_types = std::tuple<CPtr, StoredArgs...>;
+
+  static_assert(traits::IsDereferencableV<CPtr, Class>, "Cptr is not the correct dereferencable type");
+  static_assert(traits::CanUsePointerToMemberFunctionV<CPtr, callee_type>,
+                "cannot use pointer to the non-const class member function, maybe a const class instance is given");
+
+  template <class CArg, class... BoundArgs,
+            std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BoundArgs>...>, int> = 0>
+  explicit ClosureImpl(callee_type f, CArg&& carg, BoundArgs&&... args)
+      : callable_(f), stored_list_(std::forward<CArg>(carg), std::forward<BoundArgs>(args)...) {}
+
+  typename base::result_type Run(Args... args) override {
+    return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
+  }
+
+ private:
+  template <std::size_t... I>
+  typename base::result_type RunHelper(std::index_sequence<I...>, Args... args) {
+    return (std::get<0>(stored_list_)->*callable_)(std::get<I + 1>(stored_list_)..., std::forward<Args>(args)...);
+  }
+
+ private:
+  callee_type callable_;
+  stored_types stored_list_;
+};
+
+// Overload for function pointer
+template <class R, class... ClosureArgs, class... Args, class... Bounds,
+          std::enable_if_t<!placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
+decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Bounds&&... bound_args) {
+  return new ClosureImpl<R(ClosureArgs...), R (*)(Args...), ArgList<std::remove_reference_t<Bounds>...>>(
+      func, std::forward<Bounds>(bound_args)...);
 }
 
-template <class R, class... ClosureArgs, class... Args, class... Binds>
-std::enable_if_t<placeholders::HasPlaceHolderV<std::decay_t<Binds>...>,
-                 FuncClosure<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>*>
-NewClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Binds&&... bind_args) {
-  return new FuncClosureWithPlaceHolders<R (*)(ClosureArgs...), R (*)(Args...), std::decay_t<Binds>...>(
-      func, std::forward<Binds>(bind_args)...);
+// Overload for functor
+template <
+    class R, class... ClosureArgs, class Functor, class... Bounds,
+    std::enable_if_t<traits::IsFunctorV<std::remove_reference_t<Functor>> && !placeholders::HasPlaceHolderV<Bounds...>,
+                     int> = 0>
+decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, Functor&& functor, Bounds&&... bound_args) {
+  return new ClosureImpl<R(ClosureArgs...), std::remove_reference_t<Functor>,
+                         ArgList<std::remove_reference_t<Bounds>...>>(std::forward<Functor>(functor),
+                                                                      std::forward<Bounds>(bound_args)...);
 }
+
+// TODO Overload for closure which has placeholders.
+template <class R, class... ClosureArgs, class... Args, class... Bounds,
+          std::enable_if_t<placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
+decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Bounds&&... bind_args) {}
 
 }  // namespace __closure
 
@@ -582,7 +389,7 @@ class Closure<R(Args...)> {
 
  public:
   using result_type = R;
-  using arguments_type = ArgList<Args...>;
+  using arguments_type = typename impl_type::arguments_type;
 
   Closure() = default;
 
@@ -604,12 +411,24 @@ class Closure<R(Args...)> {
   std::unique_ptr<impl_type> pimpl_;
 };
 
-template <class R, class... Args, class... Binds>
-decltype(auto) MakeClosure(R (*func)(Args...), Binds&&... bind_args) {
-  using closure_args = details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<Args...>>;
-  auto res = __closure::NewClosureImpl(closure_args{}, func, std::forward<Binds>(bind_args)...);
+// MakeClosure for function pointer, remove cv-qualifier and noexcept
+template <class R, class... Args, class... Bounds>
+decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
+  using closure_args = details::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
+  auto res = __closure::MakeClosureImpl(closure_args{}, func, std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(res);
 }
+
+template <class R, class... ClosureArgs, class Functor, class... Bounds>
+decltype(auto) MakeClosure(Functor&& functor, Bounds&&... bound_args) {
+  auto res = __closure::MakeClosureImpl<R>(ArgList<ClosureArgs...>{}, std::forward<Functor>(functor),
+                                           std::forward<Bounds>(bound_args)...);
+  using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
+  return Closure<closure_res_t>(res);
+}
+
+// TODO noexcept had been a part of type system since c++17. make a specialization so that we can call noexcept function
+// in noexcept.
 
 }  // namespace closure

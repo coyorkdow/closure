@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "closure.h"
+#include "closure.hpp"
 #include "gtest/gtest.h"
 
 using namespace closure;
@@ -48,50 +48,6 @@ TEST(TestArg, Main) {
 
   static_assert(
       IsPrefixWeakV<ArgList<decltype(std::ref(std::declval<int&>())), double>, ArgList<int&, double, const long&>>, "");
-}
-
-std::size_t sum(const int& v1, double v2, int v3, int v4) { return v1 + v2 + v3 + v4; }
-
-int forwarding_test(std::unique_ptr<int> p) { return *p.get(); }
-
-int calculate_sum(const std::string& exp) {
-  int ans = 0;
-  int cur_num = 0;
-  for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
-    if (*iter == '+') {
-      assert(iter != exp.begin());
-      ans += cur_num;
-      cur_num = 0;
-    } else {
-      assert('0' <= *iter && *iter <= '9');
-      cur_num = cur_num * 10 + *iter - '0';
-    }
-  }
-  ans += cur_num;
-  return ans;
-}
-
-void test_ref(int& v) { v++; }
-
-TEST(TestClosure, Basic) {
-  Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
-  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
-
-  Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
-  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
-
-  std::string exp = "11+12+13";
-  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
-  ASSERT_TRUE(exp.size() == 0);
-
-  int v = 0;
-  auto closure3 = MakeClosure(test_ref, v);
-  static_assert(!__CLOSTD::is_const_v<decltype(v)>, "");
-  closure3.Run();
-  ASSERT_TRUE(v == 0);
-  closure3 = MakeClosure(test_ref, std::ref(v));
-  closure3.Run();
-  ASSERT_TRUE(v == 1);
 }
 
 TEST(TestPlaceHolder, Sort) {
@@ -276,4 +232,60 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
                                                     Getter<bind_type, 2>, char, float, Getter<bind_type, 5>>>,
                 "");
   static_assert(__CLOSTD::is_same_v<bind_type, details::PlaceHoldersAgentsT<binds, args>>, "");
+}
+
+std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
+
+int forwarding_test(std::unique_ptr<int> p) { return *p; }
+
+int calculate_sum(const std::string& exp) {
+  int ans = 0;
+  int cur_num = 0;
+  for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
+    if (*iter == '+') {
+      assert(iter != exp.begin());
+      ans += cur_num;
+      cur_num = 0;
+    } else {
+      assert('0' <= *iter && *iter <= '9');
+      cur_num = cur_num * 10 + *iter - '0';
+    }
+  }
+  ans += cur_num;
+  return ans;
+}
+
+void test_ref(int& v) { v++; }
+
+TEST(TestClosure, FunctionPointer) {
+  Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
+  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
+  typename std::add_const<decltype(sum)*>::type fptr = sum;
+  closure1 = MakeClosure(fptr, 1);
+  ASSERT_EQ(closure1.Run(4, 5, 6), 16);
+
+  Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
+  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
+
+  std::string exp = "11+12+13";
+  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
+  ASSERT_TRUE(exp.size() == 0);
+
+  int v = 0;
+  auto closure3 = MakeClosure(test_ref, v);
+  static_assert(__CLOSTD::is_same_v<decltype(closure3), Closure<void()>>, "");
+  static_assert(!__CLOSTD::is_const_v<decltype(v)>, "");
+  closure3.Run();
+  ASSERT_TRUE(v == 0);
+  closure3 = MakeClosure(test_ref, std::ref(v));
+  closure3.Run();
+  ASSERT_TRUE(v == 1);
+}
+
+TEST(TestClosure, Functor) {
+  auto wrap_sum = [] () {
+    return sum(1, 2, 3, 4);
+  };
+  auto closure1 = MakeClosure<std::size_t>(wrap_sum);
+  EXPECT_EQ(closure1.Run(), 10);
 }

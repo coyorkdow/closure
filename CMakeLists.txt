@@ -15,7 +15,10 @@ set(build_gmock ON)
 add_subdirectory(./googletest)
 
 add_executable(closure_test
-		closure.h
+		closure.hpp
+		closure/traits.hpp
+		closure/placeholders.hpp
+		closure/util.hpp
         test.cpp)
 
 target_compile_options(closure_test PUBLIC -g)
