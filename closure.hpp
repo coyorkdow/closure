@@ -385,30 +385,33 @@ class Closure;
 
 template <class R, class... Args>
 class Closure<R(Args...)> {
-  using impl_type = __closure::ClosureImplBase<R(Args...)>;
+  using impl_base_type = __closure::ClosureImplBase<R(Args...)>;
 
  public:
   using result_type = R;
-  using arguments_type = typename impl_type::arguments_type;
+  using arguments_type = typename impl_base_type::arguments_type;
 
   Closure() = default;
 
-  template <class... FuncArgs, class... Binds>
-  Closure(R (*func)(FuncArgs...), Binds&&... bind_args) {
-    static_assert(
-        __CLOSTD::is_same_v<arguments_type, details::RemovePrefixWeakT<ArgList<Binds...>, ArgList<FuncArgs...>>>,
-        "the given arguments is not match the type of Closure");
-    pimpl_.reset(NewClosureImpl(arguments_type{}, func, std::forward<Binds>(bind_args)...));
-  }
+  template <class... FuncArgs, class... Bounds>
+  Closure(R (*func)(FuncArgs...), Bounds&&... bound_args)
+      : pimpl_(__closure::MakeClosureImpl(arguments_type{}, func, std::forward<Bounds>(bound_args)...)) {}
 
-  explicit Closure(impl_type* pimpl) : pimpl_(pimpl) {}
-  Closure(const Closure&) = delete;
+  template <class Functor, class... Bounds>
+  Closure(Functor&& functor, Bounds&&... bound_args)
+      : pimpl_(__closure::MakeClosureImpl<R>(arguments_type{}, std::forward<Functor>(functor),
+                                             std::forward<Bounds>(bound_args)...)) {}
+
+  explicit Closure(impl_base_type* pimpl) : pimpl_(pimpl) {}
   Closure(Closure&&) noexcept = default;
   Closure& operator=(Closure&&) noexcept = default;
 
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
+  result_type operator()(Args... args) const { return Run(std::forward<Args>(args)...); }
 
-  std::unique_ptr<impl_type> pimpl_;
+  explicit operator bool() const noexcept { return static_cast<bool>(pimpl_); }
+
+  std::unique_ptr<impl_base_type> pimpl_;
 };
 
 // MakeClosure for function pointer, remove cv-qualifier and noexcept
@@ -417,7 +420,7 @@ decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
   using closure_args = details::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
   auto res = __closure::MakeClosureImpl(closure_args{}, func, std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
-  return Closure<closure_res_t>(res);
+  return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
 
 template <class R, class... ClosureArgs, class Functor, class... Bounds>
@@ -425,7 +428,7 @@ decltype(auto) MakeClosure(Functor&& functor, Bounds&&... bound_args) {
   auto res = __closure::MakeClosureImpl<R>(ArgList<ClosureArgs...>{}, std::forward<Functor>(functor),
                                            std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
-  return Closure<closure_res_t>(res);
+  return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
 
 // TODO noexcept had been a part of type system since c++17. make a specialization so that we can call noexcept function

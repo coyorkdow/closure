@@ -258,13 +258,14 @@ int calculate_sum(const std::string& exp) {
 void test_ref(int& v) { v++; }
 
 TEST(TestClosure, FunctionPointer) {
-  Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
+  auto closure1 = MakeClosure(sum, 1);
+  static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
   ASSERT_EQ(closure1.Run(2, 3, 4), 10);
   typename std::add_const<decltype(sum)*>::type fptr = sum;
-  closure1 = MakeClosure(fptr, 1);
+  closure1 = MakeClosure(fptr, 1); // test move assignment
   ASSERT_EQ(closure1.Run(4, 5, 6), 16);
 
-  Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
+  Closure<int(std::unique_ptr<int>)> closure2 (forwarding_test);
   ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
 
   std::string exp = "11+12+13";
@@ -272,7 +273,9 @@ TEST(TestClosure, FunctionPointer) {
   ASSERT_TRUE(exp.size() == 0);
 
   int v = 0;
-  auto closure3 = MakeClosure(test_ref, v);
+  Closure<void()> closure3;
+  EXPECT_FALSE(closure3);
+  closure3 = MakeClosure(test_ref, v); // test move assignment
   static_assert(__CLOSTD::is_same_v<decltype(closure3), Closure<void()>>, "");
   static_assert(!__CLOSTD::is_const_v<decltype(v)>, "");
   closure3.Run();
@@ -280,12 +283,22 @@ TEST(TestClosure, FunctionPointer) {
   closure3 = MakeClosure(test_ref, std::ref(v));
   closure3.Run();
   ASSERT_TRUE(v == 1);
+
+  Closure<int(std::string)> closure4;
+  closure4 = calculate_sum;
+  EXPECT_EQ(closure4("1+2+3"), 6);
 }
 
 TEST(TestClosure, Functor) {
-  auto wrap_sum = [] () {
-    return sum(1, 2, 3, 4);
+  std::string exp = "11+12+13";
+  auto wrap_sum = [=] () {
+    return calculate_sum(exp);
   };
   auto closure1 = MakeClosure<std::size_t>(wrap_sum);
-  EXPECT_EQ(closure1.Run(), 10);
+  EXPECT_EQ(closure1.Run(), 36);
+  std::function<float()> wrap_twice(wrap_sum);
+  EXPECT_TRUE(wrap_twice);
+  closure1 = std::move(wrap_twice);
+  EXPECT_FALSE(wrap_twice); // should be empty after moved
+  EXPECT_EQ(closure1(), 36);
 }
