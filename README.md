@@ -45,3 +45,15 @@ TEST(TestClosure, UseLikeSTDFunction) {
   EXPECT_EQ(closure1("4"), 10);
 }
 ```
+
+## Binding
+
+Still work in progress.
+
+```C++
+std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
+
+auto closure1 = MakeClosure(sum, 1); // bind 1 to arg v1
+static_assert(std::is_same<decltype(closure1), Closure<std::size_t(double, int, int)>>::value);
+EXPECT_EQ(closure1(2, 3, 4), 10);
+```
