@@ -33,7 +33,8 @@ class ClosureImplBase<R(Args...)> {
   ClosureImplBase() = default;
   virtual ~ClosureImplBase() = default;
   virtual result_type Run(Args...) = 0;
-  virtual ClosureImplBase<R(Args...)>* TryCopy() const { return nullptr; }
+  virtual ClosureImplBase<R(Args...)>* Copy() const { return nullptr; }
+  virtual bool Copyable() const { return false; }
 };
 
 template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
@@ -68,7 +69,8 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
       : callable_(std::forward<Callee>(f)), stored_list_(std::forward<BoundArgs>(args)...) {}
 
   ClosureImpl(const ClosureImpl& rhs) = default;
-  base* TryCopy() const override { return new ClosureImpl(*this); }
+  base* Copy() const override { return new ClosureImpl(*this); }
+  bool Copyable() const override { return true; }
 
   typename base::result_type Run(Args... args) override {
     return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
@@ -218,9 +220,10 @@ class Closure<R(Args...)> {
     static_assert(!__CLOSTD::is_same_v<std::decay_t<Functor>, Closure>, "this is not copy/move constructor");
   }
 
-  template <class Functor>
+  // We have to add a SFINAE argument to avoid hiding the copy assignment operator. The parameter of the copy assignment
+  // operator is const qualified, which may make the `Functor&&` prior to the `const Closure&`.
+  template <class Functor, class = std::enable_if_t<!__CLOSTD::is_same_v<std::decay_t<Functor>, Closure>>>
   Closure& operator=(Functor&& functor) {
-    static_assert(!__CLOSTD::is_same_v<std::decay_t<Functor>, Closure>, "this is not copy/move assignment operator");
     pimpl_.reset(__closure::MakeClosureImpl<R>(arguments_type{}, std::forward<Functor>(functor)));
     return *this;
   }
@@ -229,14 +232,16 @@ class Closure<R(Args...)> {
   Closure(Closure&&) noexcept = default;
   Closure& operator=(Closure&&) noexcept = default;
 
-  Closure(const Closure& rhs) : pimpl_(rhs ? rhs.pimpl_->TryCopy() : nullptr) {}
+  Closure(const Closure& rhs) : pimpl_(rhs ? rhs.pimpl_->Copy() : nullptr) {}
   Closure& operator=(const Closure& rhs) {
     pimpl_.reset();
     if (rhs) {
-      pimpl_.reset(rhs.pimpl_->TryCopy());
+      pimpl_.reset(rhs.pimpl_->Copy());
     }
     return *this;
   }
+
+  bool Copyable() const { return !pimpl_ || pimpl_->Copyable(); }
 
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
   result_type operator()(Args... args) const { return Run(std::forward<Args>(args)...); }

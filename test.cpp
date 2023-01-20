@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <memory>
 
 #include "closure.hpp"
 #include "gtest/gtest.h"
@@ -314,17 +315,26 @@ TEST(TestClosure, Copy) {
   auto closure2 = MakeClosure<int>(lambda2);
   EXPECT_EQ(closure2(), 1);
   static_assert(__CLOSTD::is_same_v<decltype(closure1), decltype(closure2)>, "");
+  EXPECT_TRUE(closure2.Copyable());
   closure1 = closure2;
-
-  EXPECT_TRUE(closure1);  // copy success
+  EXPECT_TRUE(closure1);  // copy succeeded
   EXPECT_EQ(closure1(), 2);
 
-  auto closure3 = closure2;
-//
-//  std::unique_ptr<int> ptr;
-//  auto lambda3 = [ptr = std::move(ptr)]() -> int { return static_cast<bool>(ptr); };  // uncopyable
-//  //  std::function<int()> _ = std::move(lambda3); /*unavailable*/
-//  EXPECT_TRUE(closure2);
-//  EXPECT_EQ(closure2(), 3);
-//  closure2 = std::move(lambda3);
+  std::unique_ptr<int> ptr;
+  auto lambda3 = [ptr = std::move(ptr)]() mutable -> int {
+    auto v = static_cast<bool>(ptr);
+    ptr = std::make_unique<int>(0);
+    return v;
+  };  // uncopyable
+  //  std::function<int()> _ = std::move(lambda3); /*unavailable*/
+  closure2 = std::move(lambda3);
+  EXPECT_TRUE(closure2);
+  EXPECT_FALSE(closure2.Copyable());
+  EXPECT_EQ(closure2(), 0);
+  closure1 = closure2;
+  EXPECT_FALSE(closure1);  // copy failed
+  EXPECT_TRUE(closure1.Copyable()); // an empty closure is copyable
+  closure1 = std::move(closure2);
+  EXPECT_TRUE(closure1);
+  EXPECT_EQ(closure1(), 1);
 }
