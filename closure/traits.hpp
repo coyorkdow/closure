@@ -36,8 +36,11 @@ constexpr auto is_reference_v = std::is_reference<Tp>::value;
 template <class...>
 using void_t = void;
 
-template <class T>
-constexpr bool is_function_v = std::is_function<T>::value;
+template <class Tp>
+constexpr bool is_function_v = std::is_function<Tp>::value;
+
+template <class Tp>
+constexpr bool is_copy_constructible_v = std::is_copy_constructible<Tp>::value;
 
 // Implementing invoke_result, source https://en.cppreference.com/w/cpp/types/result_of
 namespace detail {

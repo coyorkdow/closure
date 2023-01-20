@@ -262,20 +262,20 @@ TEST(TestClosure, FunctionPointer) {
   static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
   ASSERT_EQ(closure1.Run(2, 3, 4), 10);
   typename std::add_const<decltype(sum)*>::type fptr = sum;
-  closure1 = MakeClosure(fptr, 1); // test move assignment
+  closure1 = MakeClosure(fptr, 1);  // test move assignment
   ASSERT_EQ(closure1.Run(4, 5, 6), 16);
 
-  Closure<int(std::unique_ptr<int>)> closure2 (forwarding_test);
+  Closure<int(std::unique_ptr<int>)> closure2(forwarding_test);
   ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
 
   std::string exp = "11+12+13";
   ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
-  ASSERT_TRUE(exp.size() == 0);
+  ASSERT_TRUE(exp.empty());
 
   int v = 0;
   Closure<void()> closure3;
   EXPECT_FALSE(closure3);
-  closure3 = MakeClosure(test_ref, v); // test move assignment
+  closure3 = MakeClosure(test_ref, v);  // test move assignment
   static_assert(__CLOSTD::is_same_v<decltype(closure3), Closure<void()>>, "");
   static_assert(!__CLOSTD::is_const_v<decltype(v)>, "");
   closure3.Run();
@@ -291,14 +291,40 @@ TEST(TestClosure, FunctionPointer) {
 
 TEST(TestClosure, Functor) {
   std::string exp = "11+12+13";
-  auto wrap_sum = [=] () {
-    return calculate_sum(exp);
-  };
+  auto wrap_sum = [=]() { return calculate_sum(exp); };
   auto closure1 = MakeClosure<std::size_t>(wrap_sum);
   EXPECT_EQ(closure1.Run(), 36);
   std::function<float()> wrap_twice(wrap_sum);
   EXPECT_TRUE(wrap_twice);
   closure1 = std::move(wrap_twice);
-  EXPECT_FALSE(wrap_twice); // should be empty after moved
+  EXPECT_FALSE(wrap_twice);  // should be empty after moved
   EXPECT_EQ(closure1(), 36);
+}
+
+TEST(TestClosure, Copy) {
+  std::string exp = "11+12+13";
+  auto lambda1 = [=]() { return calculate_sum(exp); };
+  auto closure1 = MakeClosure<int>(lambda1);
+  EXPECT_EQ(closure1(), 36);
+  int v = 0;
+  auto lambda2 = [&]() {
+    test_ref(v);
+    return v;
+  };
+  auto closure2 = MakeClosure<int>(lambda2);
+  EXPECT_EQ(closure2(), 1);
+  static_assert(__CLOSTD::is_same_v<decltype(closure1), decltype(closure2)>, "");
+  closure1 = closure2;
+
+  EXPECT_TRUE(closure1);  // copy success
+  EXPECT_EQ(closure1(), 2);
+
+  auto closure3 = closure2;
+//
+//  std::unique_ptr<int> ptr;
+//  auto lambda3 = [ptr = std::move(ptr)]() -> int { return static_cast<bool>(ptr); };  // uncopyable
+//  //  std::function<int()> _ = std::move(lambda3); /*unavailable*/
+//  EXPECT_TRUE(closure2);
+//  EXPECT_EQ(closure2(), 3);
+//  closure2 = std::move(lambda3);
 }
