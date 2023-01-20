@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "closure.h"
+#include "closure.hpp"
 #include "gtest/gtest.h"
 
 using namespace closure;
@@ -9,103 +9,68 @@ using namespace closure;
 TEST(TestArg, Main) {
   using namespace details;
 
-  static_assert(IsPrefixWeakV<ArgList<>, ArgList<>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<>, ArgList<>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<>>, ArgList<>>, "");
 
-  static_assert(IsPrefixWeakV<ArgList<>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<int>>, ArgList<int>>);
+  static_assert(IsPrefixWeakV<ArgList<>, ArgList<int>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<>, ArgList<int>>, ArgList<int>>, "");
 
-  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int>>, ArgList<>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int>>, ArgList<>>, "");
 
-  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double>>, ArgList<double>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double>>, ArgList<double>>, "");
 
-  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, long>>, ArgList<long>>);
+  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int, double, long>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, long>>, ArgList<long>>,
+                "");
 
-  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double, long>>, ArgList<double, long>>);
+  static_assert(IsPrefixWeakV<ArgList<int>, ArgList<int, double, long>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int>, ArgList<int, double, long>>, ArgList<double, long>>,
+                "");
 
-  static_assert(IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double, long>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int, double, long>, ArgList<int, double, long>>, ArgList<>>);
-
-  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<double, long>>);
-  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double>>);
-
-  static_assert(IsPrefixWeakV<ArgList<const int&>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<const int&>, ArgList<int>>, ArgList<>>);
-  static_assert(IsPrefixWeakV<ArgList<int&&>, ArgList<int>>);
-  static_assert(std::is_same_v<RemovePrefixWeakT<ArgList<int&&>, ArgList<int>>, ArgList<>>);
-
-  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int&&, double, const long&>>);
+  static_assert(IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double, long>>, "");
   static_assert(
-      std::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, const long&>>, ArgList<const long&>>);
+      __CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int, double, long>, ArgList<int, double, long>>, ArgList<>>, "");
+
+  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<double, long>>, "");
+  static_assert(!IsPrefixWeakV<ArgList<int, double, long>, ArgList<int, double>>, "");
+
+  static_assert(IsPrefixWeakV<ArgList<const int&>, ArgList<int>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<const int&>, ArgList<int>>, ArgList<>>, "");
+  static_assert(IsPrefixWeakV<ArgList<int&&>, ArgList<int>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int&&>, ArgList<int>>, ArgList<>>, "");
+
+  static_assert(IsPrefixWeakV<ArgList<int, double>, ArgList<int&&, double, const long&>>, "");
+  static_assert(__CLOSTD::is_same_v<RemovePrefixWeakT<ArgList<int, double>, ArgList<int, double, const long&>>,
+                                    ArgList<const long&>>,
+                "");
 
   static_assert(
-      IsPrefixWeakV<ArgList<decltype(std::ref(std::declval<int&>())), double>, ArgList<int&, double, const long&>>);
-}
-
-std::size_t sum(const int& v1, double v2, int v3, int v4) { return v1 + v2 + v3 + v4; }
-
-int forwarding_test(std::unique_ptr<int> p) { return *p.get(); }
-
-int calculate_sum(std::string exp) {
-  int ans = 0;
-  int cur_num = 0;
-  for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
-    if (*iter == '+') {
-      assert(iter != exp.begin());
-      ans += cur_num;
-      cur_num = 0;
-    } else {
-      assert('0' <= *iter && *iter <= '9');
-      cur_num = cur_num * 10 + *iter - '0';
-    }
-  }
-  ans += cur_num;
-  return ans;
-}
-
-void test_ref(int& v) { v++; }
-
-TEST(TestClosure, Basic) {
-  Closure<std::size_t(double, int, int)> closure1 = MakeClosure(sum, 1);
-  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
-
-  Closure<int(std::unique_ptr<int>)> closure2 = MakeClosure(forwarding_test);
-  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
-
-  std::string exp = "11+12+13";
-  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
-  ASSERT_TRUE(exp.size() == 0);
-
-  int v = 0;
-  auto closure3 = MakeClosure(test_ref, v);
-  static_assert(!std::is_const_v<decltype(v)>);
-  closure3.Run();
-  ASSERT_TRUE(v == 0);
-  closure3 = MakeClosure(test_ref, std::ref(v));
-  closure3.Run();
-  ASSERT_TRUE(v == 1);
+      IsPrefixWeakV<ArgList<decltype(std::ref(std::declval<int&>())), double>, ArgList<int&, double, const long&>>, "");
 }
 
 TEST(TestPlaceHolder, Sort) {
   using namespace placeholders;
   using namespace details;
-  static_assert(std::is_same_v<std::index_sequence<0>, typename sort::TEST_Sort<PH<0>>::type>);
-  static_assert(std::is_same_v<std::index_sequence<1, 2, 3>, typename sort::TEST_Sort<PH<2>, PH<3>, PH<1>>::type>);
+  static_assert(__CLOSTD::is_same_v<std::index_sequence<0>, typename sort::TEST_Sort<PH<0>>::type>, "");
+  static_assert(__CLOSTD::is_same_v<std::index_sequence<1, 2, 3>, typename sort::TEST_Sort<PH<2>, PH<3>, PH<1>>::type>,
+                "");
   static_assert(
-      std::is_same_v<std::index_sequence<3, 4, 5, 6>, typename sort::TEST_Sort<PH<6>, PH<4>, PH<3>, PH<5>>::type>);
-  static_assert(std::is_same_v<std::index_sequence<2, 4, 5, 6, 9>,
-                               typename sort::TEST_Sort<PH<5>, PH<6>, PH<4>, PH<9>, PH<2>>::type>);
-  static_assert(std::is_same_v<std::index_sequence<2, 4, 5, 5, 6, 6, 9>,
-                               typename sort::TEST_Sort<PH<6>, PH<5>, PH<6>, PH<4>, PH<9>, PH<5>, PH<2>>::type>);
+      __CLOSTD::is_same_v<std::index_sequence<3, 4, 5, 6>, typename sort::TEST_Sort<PH<6>, PH<4>, PH<3>, PH<5>>::type>,
+      "");
+  static_assert(__CLOSTD::is_same_v<std::index_sequence<2, 4, 5, 6, 9>,
+                                    typename sort::TEST_Sort<PH<5>, PH<6>, PH<4>, PH<9>, PH<2>>::type>,
+                "");
+  static_assert(__CLOSTD::is_same_v<std::index_sequence<2, 4, 5, 5, 6, 6, 9>,
+                                    typename sort::TEST_Sort<PH<6>, PH<5>, PH<6>, PH<4>, PH<9>, PH<5>, PH<2>>::type>,
+                "");
 
   using within_others = ArgList<int, int, PH<2>, int, PH<3>, PH<0>, int, PH<1>>;
-  static_assert(HasPlaceHolderV<within_others>);
+  static_assert(HasPlaceHolderV<within_others>, "");
 
-  static_assert(std::is_same_v<typename FilterPlaceHolder<within_others>::type, ArgList<PH<2>, PH<3>, PH<0>, PH<1>>>);
+  static_assert(
+      __CLOSTD::is_same_v<typename FilterPlaceHolder<within_others>::type, ArgList<PH<2>, PH<3>, PH<0>, PH<1>>>, "");
 }
 
 TEST(TestAgentAndGetter, AgentBasic) {
@@ -153,7 +118,13 @@ TEST(TestAgentAndGetter, AgentTuple) {
   std::tuple<Agent<int&>, Agent<double&>, Agent<std::string>> agents;
 
   auto bind_value = [&](auto arg1, auto arg2, auto arg3) {
+#if __cplusplus < 201703L
+    auto& v1 = std::get<0>(agents);
+    auto& v2 = std::get<1>(agents);
+    auto& v3 = std::get<2>(agents);
+#else
     auto& [v1, v2, v3] = agents;
+#endif
     auto arg3_dup = arg3;
     v1 = arg1;
     v2 = arg2;
@@ -174,22 +145,25 @@ TEST(TestAgentAndGetter, GettersMapping) {
   int arg2 = 1;
   std::tuple<Agent<std::string&>, Agent<int&>, int> agents(arg1, arg2, 0);
   using Getter0 = Getter<decltype(agents), 0>;
-  static_assert(IsGetterDecayV<Getter0>);
+  static_assert(IsGetterDecayV<Getter0>, "");
   Getter0 getter;
   ASSERT_FALSE(getter);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   getter.Map(agents);
   EXPECT_EQ(std::get<0>(agents).Get(), "1234");
   EXPECT_EQ(getter.Get(), "1234");
-
+#if __cplusplus < 201703L
+  auto& v1 = std::get<0>(agents);
+  auto& v2 = std::get<1>(agents);
+#else
   auto& [v1, v2, _] = agents;
-
+#endif
   using Getter1 = Getter<decltype(agents), 1>;
   // There is no Getter2.
   auto getters = std::make_tuple(0, Getter1{}, Getter0{});
-  static_assert(!IsGetterDecayV<decltype(std::get<0>(std::declval<decltype(getters)>()))>);
-  static_assert(IsGetterDecayV<decltype(std::get<1>(std::declval<decltype(getters)>()))>);
-  static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>);
+  static_assert(!IsGetterDecayV<decltype(std::get<0>(std::declval<decltype(getters)>()))>, "");
+  static_assert(IsGetterDecayV<decltype(std::get<1>(std::declval<decltype(getters)>()))>, "");
+  static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>, "");
   int cnt = placeholders::MapGetters(getters, agents);
   EXPECT_EQ(cnt, 2);
   EXPECT_EQ(v2.Get(), std::get<1>(getters).Get());
@@ -208,12 +182,13 @@ TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
   using namespace placeholders;
   using args = ArgList<int, double, std::string, long>;
   using binds = ArgList<int, PH<1>, PH<0>, long>;
-  static_assert(details::IsPrefixWeakV<binds, args>);
+  static_assert(details::IsPrefixWeakV<binds, args>, "");
   using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
-  static_assert(std::is_same_v<ph_args, ArgList<double, std::string>>);
+  static_assert(__CLOSTD::is_same_v<ph_args, ArgList<double, std::string>>, "");
 
   static_assert(
-      std::is_same_v<details::GetPlaceHoldersCorrespondTypesT<ArgList<PH<0>>, ArgList<long, int>>, ArgList<long>>);
+      __CLOSTD::is_same_v<details::GetPlaceHoldersCorrespondTypesT<ArgList<PH<0>>, ArgList<long, int>>, ArgList<long>>,
+      "");
 }
 
 TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
@@ -222,22 +197,108 @@ TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
   using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
   using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
   using phl = FilterPlaceHolderT<binds>;
-  using result = typename details::SortPlaceHoldersCorrespondTypes<ph_args, phl>::type;
-  static_assert(std::is_same_v<result, ArgList<char, double, float, std::string>>);
+  using result = details::SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
+  static_assert(__CLOSTD::is_same_v<result, ArgList<char, double, float, std::string>>, "");
 
-  static_assert(std::is_same_v<details::SortPlaceHoldersCorrespondTypesT<ArgList<int>, ArgList<PH<0>>>, ArgList<int>>);
+  static_assert(__CLOSTD::is_same_v<details::SortUniqueFillPlaceHoldersCorrespondTypesT<ArgList<int>, ArgList<PH<0>>>,
+                                    ArgList<int>>,
+                "");
+}
+
+TEST(TestAgentAndGetter, StableSort) {
+  using namespace placeholders;
+  using args = ArgList<int, double, std::string, long, char, float, void*>;
+  using binds = ArgList<PH<3>, PH<1>, PH<3>, PH<1>, PH<2>, PH<5>, PH<2>>;
+  using ph_args = details::GetPlaceHoldersCorrespondTypesT<binds, args>;
+  using phl = FilterPlaceHolderT<binds>;
+  using sorted = details::sort::RemoveIndicesV<details::sort::SortT<ph_args, phl>>;
+  static_assert(__CLOSTD::is_same_v<sorted, ArgList<double, long, char, void*, int, std::string, float>>, "");
+
+  using result = details::SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
+  static_assert(
+      __CLOSTD::is_same_v<result, ArgList<closure::Auto /*fill from zero*/, double, char, int, closure::Auto, float>>,
+      "");
 }
 
 TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
   using namespace placeholders;
-  using args = ArgList<int, double, std::string, long, char, float, void>;
-  using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
+  using args = ArgList<int, double, std::string, long, char, float, void*, unsigned>;
+  using binds = ArgList<PH<3>, PH<2>, std::string, PH<2>, char, float, PH<5>>;
   using result = details::ReplacePlaceHoldersWithGettersT<binds, args>;
 
-  using bind_type = std::tuple<Agent<char>, Agent<double>, Agent<float>, Agent<std::string>>;
+  using bind_type = std::tuple<Agent<Auto>, Agent<Auto>, Agent<double>, Agent<int>, Agent<Auto>, Agent<void*>>;
 
-  static_assert(std::is_same_v<result, ArgList<int, Getter<bind_type, 1>, Getter<bind_type, 3>, long,
-                                               Getter<bind_type, 0>, Getter<bind_type, 2>>>);
+  static_assert(__CLOSTD::is_same_v<result, ArgList<Getter<bind_type, 3>, Getter<bind_type, 2>, std::string,
+                                                    Getter<bind_type, 2>, char, float, Getter<bind_type, 5>>>,
+                "");
+  static_assert(__CLOSTD::is_same_v<bind_type, details::PlaceHoldersAgentsT<binds, args>>, "");
 }
 
-TEST(TestAgentAndGetter, Mapping) {}
+std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
+
+int forwarding_test(std::unique_ptr<int> p) { return *p; }
+
+int calculate_sum(const std::string& exp) {
+  int ans = 0;
+  int cur_num = 0;
+  for (auto iter = exp.begin(); iter < exp.end(); ++iter) {
+    if (*iter == '+') {
+      assert(iter != exp.begin());
+      ans += cur_num;
+      cur_num = 0;
+    } else {
+      assert('0' <= *iter && *iter <= '9');
+      cur_num = cur_num * 10 + *iter - '0';
+    }
+  }
+  ans += cur_num;
+  return ans;
+}
+
+void test_ref(int& v) { v++; }
+
+TEST(TestClosure, FunctionPointer) {
+  auto closure1 = MakeClosure(sum, 1);
+  static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
+  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
+  typename std::add_const<decltype(sum)*>::type fptr = sum;
+  closure1 = MakeClosure(fptr, 1); // test move assignment
+  ASSERT_EQ(closure1.Run(4, 5, 6), 16);
+
+  Closure<int(std::unique_ptr<int>)> closure2 (forwarding_test);
+  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
+
+  std::string exp = "11+12+13";
+  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
+  ASSERT_TRUE(exp.size() == 0);
+
+  int v = 0;
+  Closure<void()> closure3;
+  EXPECT_FALSE(closure3);
+  closure3 = MakeClosure(test_ref, v); // test move assignment
+  static_assert(__CLOSTD::is_same_v<decltype(closure3), Closure<void()>>, "");
+  static_assert(!__CLOSTD::is_const_v<decltype(v)>, "");
+  closure3.Run();
+  ASSERT_TRUE(v == 0);
+  closure3 = MakeClosure(test_ref, std::ref(v));
+  closure3.Run();
+  ASSERT_TRUE(v == 1);
+
+  Closure<int(std::string)> closure4;
+  closure4 = calculate_sum;
+  EXPECT_EQ(closure4("1+2+3"), 6);
+}
+
+TEST(TestClosure, Functor) {
+  std::string exp = "11+12+13";
+  auto wrap_sum = [=] () {
+    return calculate_sum(exp);
+  };
+  auto closure1 = MakeClosure<std::size_t>(wrap_sum);
+  EXPECT_EQ(closure1.Run(), 36);
+  std::function<float()> wrap_twice(wrap_sum);
+  EXPECT_TRUE(wrap_twice);
+  closure1 = std::move(wrap_twice);
+  EXPECT_FALSE(wrap_twice); // should be empty after moved
+  EXPECT_EQ(closure1(), 36);
+}
