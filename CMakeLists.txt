@@ -1,7 +1,16 @@
 cmake_minimum_required(VERSION 3.13)
 project(closure_test)
 
-set(CMAKE_CXX_STANDARD 14)
+if (NOT DEFINED CMAKE_CXX_STANDARD)
+    message(STATUS "The CPP standard is not set. Default: C++14")
+    set(CMAKE_CXX_STANDARD 14)
+else ()
+    message(STATUS "Checking the CPP standard")
+    if (CMAKE_CXX_STANDARD LESS 14)
+        message(FATAL_ERROR "C++14 or higher is required. Given standard: C++${CMAKE_CXX_STANDARD}")
+    endif ()
+endif ()
+
 
 include_directories(.)
 
@@ -15,10 +24,10 @@ set(build_gmock ON)
 add_subdirectory(./googletest)
 
 add_executable(closure_test
-		closure.hpp
-		closure/traits.hpp
-		closure/placeholders.hpp
-		closure/util.hpp
+        closure.hpp
+        closure/traits.hpp
+        closure/placeholders.hpp
+        closure/util.hpp
         test.cpp)
 
 target_compile_options(closure_test PUBLIC -g)
