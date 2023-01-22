@@ -262,6 +262,8 @@ TEST(TestClosure, FunctionPointer) {
   auto closure1 = MakeClosure(sum, 1);
   static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
   ASSERT_EQ(closure1.Run(2, 3, 4), 10);
+  double lvalue = 2;
+  EXPECT_EQ(closure1(lvalue, 3, 4), 10); // can accept lvalue
   typename std::add_const<decltype(sum)*>::type fptr = sum;
   closure1 = MakeClosure(fptr, 1);  // test move assignment
   ASSERT_EQ(closure1.Run(4, 5, 6), 16);
