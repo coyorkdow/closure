@@ -32,7 +32,7 @@ class ClosureImplBase<R(Args...)> {
   using closure_type = R(Args...);
   ClosureImplBase() = default;
   virtual ~ClosureImplBase() = default;
-  virtual result_type Run(Args...) = 0;
+  virtual result_type Run(Args&&...) = 0;
   virtual ClosureImplBase<R(Args...)>* Copy() const { return nullptr; }
   virtual bool Copyable() const { return false; }
 };
@@ -72,13 +72,13 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
   base* Copy() const override { return new ClosureImpl(*this); }
   bool Copyable() const override { return true; }
 
-  typename base::result_type Run(Args... args) override {
+  typename base::result_type Run(Args&&... args) override {
     return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
   }
 
  private:
   template <std::size_t... I>
-  decltype(auto) RunHelper(std::index_sequence<I...>, Args... args) {
+  decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
     return callable_(std::get<I>(stored_list_)..., std::forward<Args>(args)...);
   }
 
@@ -115,13 +115,13 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
   explicit ClosureImpl(Callee&& f, BoundArgs&&... args)
       : callable_(std::forward<Callee>(f)), stored_list_(std::forward<BoundArgs>(args)...) {}
 
-  typename base::result_type Run(Args... args) override {
+  typename base::result_type Run(Args&&... args) override {
     return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
   }
 
  private:
   template <std::size_t... I>
-  decltype(auto) RunHelper(std::index_sequence<I...>, Args... args) {
+  decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
     return callable_(std::get<I>(stored_list_)..., std::forward<Args>(args)...);
   }
 
@@ -149,13 +149,13 @@ class ClosureImpl<R(Args...), R (Class::*)(CallableArgs...), ArgList<CPtr, Store
   explicit ClosureImpl(callee_type f, CArg&& carg, BoundArgs&&... args)
       : callable_(f), stored_list_(std::forward<CArg>(carg), std::forward<BoundArgs>(args)...) {}
 
-  typename base::result_type Run(Args... args) override {
+  typename base::result_type Run(Args&&... args) override {
     return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
   }
 
  private:
   template <std::size_t... I>
-  typename base::result_type RunHelper(std::index_sequence<I...>, Args... args) {
+  typename base::result_type RunHelper(std::index_sequence<I...>, Args&&... args) {
     return (std::get<0>(stored_list_)->*callable_)(std::get<I + 1>(stored_list_)..., std::forward<Args>(args)...);
   }
 
@@ -243,6 +243,8 @@ class Closure<R(Args...)> {
 
   bool Copyable() const { return !pimpl_ || pimpl_->Copyable(); }
 
+  // The parameters cannot be Args&&. We must enable pass-by-value in the first layer forwarding to ensure that an
+  // lvalue can be accepted by a closure argument of non-reference type.
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
   result_type operator()(Args... args) const { return Run(std::forward<Args>(args)...); }
 
