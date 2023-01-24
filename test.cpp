@@ -91,16 +91,14 @@ TEST(TestAgentAndGetter, AgentBasic) {
   str_agent = std::move(ano_str);
   ASSERT_EQ(str_agent.Get(), "123");
   ASSERT_EQ(str, "");  // str_agent now has nothing to do with str.
-  Agent<std::string> ano = std::move(str_agent);
+  Agent<std::string> ano = str_agent;
   ASSERT_EQ(ano.Get(), "123");
   ASSERT_EQ(str, "");
   ASSERT_TRUE(ano);
-  ASSERT_FALSE(str_agent);
   Agent<std::string> ano2;
   ASSERT_FALSE(ano2);
-  ano2 = std::move(ano);
+  ano2 = ano;
   ASSERT_TRUE(ano2);
-  ASSERT_FALSE(ano);
   ASSERT_EQ(ano2.Get(), "123");
   ano_str = "456";
   ASSERT_EQ(ano2.Get(), "456");
@@ -263,7 +261,7 @@ TEST(TestClosure, FunctionPointer) {
   static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
   ASSERT_EQ(closure1.Run(2, 3, 4), 10);
   double lvalue = 2;
-  EXPECT_EQ(closure1(lvalue, 3, 4), 10); // can accept lvalue
+  EXPECT_EQ(closure1(lvalue, 3, 4), 10);  // can accept lvalue
   typename std::add_const<decltype(sum)*>::type fptr = sum;
   closure1 = MakeClosure(fptr, 1);  // test move assignment
   ASSERT_EQ(closure1.Run(4, 5, 6), 16);
@@ -328,15 +326,41 @@ TEST(TestClosure, Copy) {
     ptr = std::make_unique<int>(0);
     return v;
   };  // uncopyable
-  //  std::function<int()> _ = std::move(lambda3); /*unavailable*/
+  //  std::function<int()> _ = std::move(lambda3); /*can't compile*/
   closure2 = std::move(lambda3);
   EXPECT_TRUE(closure2);
   EXPECT_FALSE(closure2.Copyable());
   EXPECT_EQ(closure2(), 0);
   closure1 = closure2;
-  EXPECT_FALSE(closure1);  // copy failed
-  EXPECT_TRUE(closure1.Copyable()); // an empty closure is copyable
+  EXPECT_FALSE(closure1);            // copy failed
+  EXPECT_TRUE(closure1.Copyable());  // an empty closure is copyable
   closure1 = std::move(closure2);
   EXPECT_TRUE(closure1);
   EXPECT_EQ(closure1(), 1);
+}
+
+class TestClassBindMethod {
+ public:
+  int ResIntArg0() const { return 0; }
+  int ResIntArg1(int v) const { return v; }
+  int ResIntArgs3(int v1, int v2, int v3) const { return v1 + v2 + v3; }
+  std::size_t ResSizeTArg1NonConst(int add) {
+    change_.emplace_back(add);
+    return change_.size();
+  }
+
+  std::vector<int> change_;
+};
+
+TEST(TestClosure, Method) {
+  TestClassBindMethod cl;
+  static_assert(__CLOSTD::is_member_function_pointer_v<decltype(&TestClassBindMethod::ResIntArg0)>, "");
+  static_assert(traits::IsDereferencable<std::unique_ptr<TestClassBindMethod>>::value, "");
+  auto ptr = std::make_unique<TestClassBindMethod>();
+
+  auto closure1 = MakeClosure(&TestClassBindMethod::ResIntArg0, &cl);
+  EXPECT_EQ(closure1(), 0);
+
+  closure1 = MakeClosure(&TestClassBindMethod::ResIntArg1, std::make_unique<TestClassBindMethod>(), 233);
+  EXPECT_EQ(closure1(), 233);
 }

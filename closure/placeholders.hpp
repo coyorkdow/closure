@@ -62,45 +62,18 @@ using FilterPlaceHolderT = typename FilterPlaceHolder<ArgL>::type;
 // Initialize Agent with a temporary object (prvalue) will occur a dangling reference.
 template <class Tp>
 class Agent {
-  class Wrapper {
-   public:
-    explicit Wrapper(Tp&& v) noexcept : data_(std::forward<Tp>(v)) {}
-    Tp&& data_;
-  };
-
  public:
-  Agent() noexcept : ptr_(nullptr), mem_{} {}
-  explicit Agent(Tp&& v) noexcept : ptr_(reinterpret_cast<Wrapper*>(mem_)), mem_{} {
-    new (mem_) Wrapper(std::forward<Tp>(v));
-  }
+  Agent() noexcept : ptr_(nullptr) {}
+  explicit Agent(Tp&& v) noexcept : ptr_(&v) {}
   Agent& operator=(Tp&& v) noexcept {
-    ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    new (mem_) Wrapper(std::forward<Tp>(v));
+    ptr_ = &v;
     return *this;
   }
-  Agent(Agent&& rhs) noexcept : ptr_(nullptr), mem_{} {
-    if (rhs.ptr_) {
-      new (mem_) Wrapper(std::move(*rhs.ptr_));
-      rhs.ptr_ = nullptr;
-      ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    }
-  }
-  Agent& operator=(Agent&& rhs) noexcept {
-    ptr_ = nullptr;
-    if (rhs.ptr_) {
-      new (mem_) Wrapper(std::move(*rhs.ptr_));
-      rhs.ptr_ = nullptr;
-      ptr_ = reinterpret_cast<Wrapper*>(mem_);
-    }
-    return *this;
-  }
-
   explicit operator bool() const noexcept { return ptr_; }
-  decltype(auto) Get() const noexcept { return std::forward<Tp>(ptr_->data_); }
+  Tp&& Get() const noexcept { return std::forward<Tp>(*ptr_); }
 
  private:
-  Wrapper* ptr_;
-  unsigned char mem_[sizeof(Wrapper)];
+  std::remove_reference_t<Tp>* ptr_;
 };
 
 template <>

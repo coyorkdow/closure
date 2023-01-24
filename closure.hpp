@@ -41,12 +41,11 @@ template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
 class ClosureImpl;
 
 // Overload for function pointer and functor (copy constructible)
-// It is guaranteed that all the StoredArgs... are non-reference types.
+// It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
 template <class R, class... Args, class Callable, class... StoredArgs>
 class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
                   std::enable_if_t<(__CLOSTD::is_function_v<std::remove_pointer_t<Callable>> ||
-                                    traits::IsFunctorV<std::remove_reference_t<Callable>>)&&/* requires the class is
-                                                                                                copy constructible */
+                                    traits::IsFunctorV<Callable>)&&/* requires the class is copy constructible */
                                    __CLOSTD::is_copy_constructible_v<Callable> &&
                                    __CLOSTD::is_copy_constructible_v<std::tuple<StoredArgs...>>>>
     : public ClosureImplBase<R(Args...)> {
@@ -87,13 +86,11 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
 };
 
 // Overload for function pointer and functor (non copy constructible)
-// It is guaranteed that all the StoredArgs... are non-reference types.
+// It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
 template <class R, class... Args, class Callable, class... StoredArgs>
 class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
                   std::enable_if_t<(__CLOSTD::is_function_v<std::remove_pointer_t<Callable>> ||
-                                    traits::IsFunctorV<std::remove_reference_t<Callable>>)&&/* requires the class is
-                                                                                              non copy constructible
-                                                                                            */
+                                    traits::IsFunctorV<Callable>)&&/* requires the class is non copy constructible */
                                    !(__CLOSTD::is_copy_constructible_v<Callable> &&
                                      __CLOSTD::is_copy_constructible_v<std::tuple<StoredArgs...>>)>>
     : public ClosureImplBase<R(Args...)> {
@@ -129,20 +126,20 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
   stored_types stored_list_;
 };
 
-// TODO Overload for class method (non const)
-// It is guaranteed that the CPtr and all StoredArgs... are non-reference types.
-template <class R, class... Args, class Class, class CPtr, class... CallableArgs, class... StoredArgs>
-class ClosureImpl<R(Args...), R (Class::*)(CallableArgs...), ArgList<CPtr, StoredArgs...>>
+// TODO Overload for class method
+// It is guaranteed that Method, the CPtr, and all the StoredArgs... are non-reference types.
+template <class R, class... Args, class Method, class CPtr, class... StoredArgs>
+class ClosureImpl<R(Args...), Method, ArgList<CPtr, StoredArgs...>,
+                  std::enable_if_t<__CLOSTD::is_member_function_pointer_v<Method> && traits::IsDereferencableV<CPtr> &&
+                                   traits::CanUsePointerToMemberFunctionV<CPtr, Method>>>
     : public ClosureImplBase<R(Args...)> {
   using base = ClosureImplBase<R(Args...)>;
 
- public:
-  using callee_type = R (Class::*)(CallableArgs...);
-  using stored_types = std::tuple<CPtr, StoredArgs...>;
+  static_assert(traits::CanUsePointerToMemberFunctionV<CPtr, Method>, "");
 
-  static_assert(traits::IsDereferencableV<CPtr, Class>, "Cptr is not the correct dereferencable type");
-  static_assert(traits::CanUsePointerToMemberFunctionV<CPtr, callee_type>,
-                "cannot use pointer to the non-const class member function, maybe a const class instance is given");
+ public:
+  using callee_type = Method;
+  using stored_types = std::tuple<CPtr, StoredArgs...>;
 
   template <class CArg, class... BoundArgs,
             std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BoundArgs>...>, int> = 0>
@@ -156,7 +153,7 @@ class ClosureImpl<R(Args...), R (Class::*)(CallableArgs...), ArgList<CPtr, Store
  private:
   template <std::size_t... I>
   typename base::result_type RunHelper(std::index_sequence<I...>, Args&&... args) {
-    return (std::get<0>(stored_list_)->*callable_)(std::get<I + 1>(stored_list_)..., std::forward<Args>(args)...);
+    return ((*std::get<0>(stored_list_)).*callable_)(std::get<I + 1>(stored_list_)..., std::forward<Args>(args)...);
   }
 
  private:
@@ -181,6 +178,16 @@ decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, Functor&& functor, Bound
   return new ClosureImpl<R(ClosureArgs...), std::remove_reference_t<Functor>,
                          ArgList<std::remove_reference_t<Bounds>...>>(std::forward<Functor>(functor),
                                                                       std::forward<Bounds>(bound_args)...);
+}
+
+// Overload for class method
+template <class R, class... ClosureArgs, class Method, class CPtr, class... Bounds,
+          std::enable_if_t<__CLOSTD::is_member_function_pointer_v<Method> && !placeholders::HasPlaceHolderV<Bounds...>,
+                           int> = 0>
+decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, Method method, CPtr&& cptr, Bounds&&... bound_args) {
+  return new ClosureImpl<R(ClosureArgs...), Method,
+                         ArgList<std::remove_reference_t<CPtr>, std::remove_reference_t<Bounds>...>>(
+      method, std::forward<CPtr>(cptr), std::forward<Bounds>(bound_args)...);
 }
 
 // TODO Overload for closure which has placeholders.
@@ -262,6 +269,10 @@ decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
 
+// TODO noexcept had been a part of type system since c++17. make a specialization so that we can call noexcept function
+// in noexcept.
+
+// MakeClosure for functor
 template <class R, class... ClosureArgs, class Functor, class... Bounds>
 decltype(auto) MakeClosure(Functor&& functor, Bounds&&... bound_args) {
   auto res = __closure::MakeClosureImpl<R>(ArgList<ClosureArgs...>{}, std::forward<Functor>(functor),
@@ -270,7 +281,22 @@ decltype(auto) MakeClosure(Functor&& functor, Bounds&&... bound_args) {
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
 
-// TODO noexcept had been a part of type system since c++17. make a specialization so that we can call noexcept function
-// in noexcept.
+template <class R, class Class, class... Args, class CPtr, class... Bounds>
+decltype(auto) MakeClosure(R (Class::*method)(Args...), CPtr&& cptr, Bounds&&... bound_args) {
+  using closure_args = details::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
+  auto res = __closure::MakeClosureImpl<R>(closure_args{}, method, std::forward<CPtr>(cptr),
+                                           std::forward<Bounds>(bound_args)...);
+  using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
+  return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
+}
+
+template <class R, class Class, class... Args, class CPtr, class... Bounds>
+decltype(auto) MakeClosure(R (Class::*method)(Args...) const, CPtr&& cptr, Bounds&&... bound_args) {
+  using closure_args = details::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
+  auto res = __closure::MakeClosureImpl<R>(closure_args{}, method, std::forward<CPtr>(cptr),
+                                           std::forward<Bounds>(bound_args)...);
+  using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
+  return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
+}
 
 }  // namespace closure

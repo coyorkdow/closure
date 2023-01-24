@@ -39,3 +39,4 @@
 build/
 cmake-build-debug/
 cmake-build-release/
+cmake-build-release-gcc/

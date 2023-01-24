@@ -19,25 +19,28 @@ template <class Tuple>
 constexpr auto tuple_size_v = std::tuple_size<Tuple>::value;
 
 template <class From, class To>
-constexpr auto is_convertible_v = std::is_convertible<From, To>::value;
+constexpr bool is_convertible_v = std::is_convertible<From, To>::value;
 
 template <class Tp1, class Tp2>
-constexpr auto is_same_v = std::is_same<Tp1, Tp2>::value;
+constexpr bool is_same_v = std::is_same<Tp1, Tp2>::value;
 
 template <class Tp>
-constexpr auto is_const_v = std::is_const<Tp>::value;
+constexpr bool is_const_v = std::is_const<Tp>::value;
 
 template <class Tp>
-constexpr auto is_pointer_v = std::is_pointer<Tp>::value;
+constexpr bool is_pointer_v = std::is_pointer<Tp>::value;
 
 template <class Tp>
-constexpr auto is_reference_v = std::is_reference<Tp>::value;
+constexpr bool is_reference_v = std::is_reference<Tp>::value;
 
 template <class...>
 using void_t = void;
 
 template <class Tp>
 constexpr bool is_function_v = std::is_function<Tp>::value;
+
+template <class Tp>
+constexpr bool is_member_function_pointer_v = std::is_member_function_pointer<Tp>::value;
 
 template <class Tp>
 constexpr bool is_copy_constructible_v = std::is_copy_constructible<Tp>::value;
@@ -118,20 +121,17 @@ auto IsDereferencableImpl(int) -> std::integral_constant<
 template <class Tp>
 auto IsDereferencableImpl(...) -> std::is_pointer<Tp>;
 
-template <class Ptr, class Tar>
-struct IsDereferencable
-    : std::integral_constant<bool,
-                             decltype(IsDereferencableImpl<Ptr>(0))::value &&
-                                 __CLOSTD::is_same_v<std::remove_reference_t<decltype(*std::declval<Ptr>())>, Tar>> {};
+template <class Ptr>
+struct IsDereferencable : decltype(IsDereferencableImpl<Ptr>(0)) {};
 
 template <class Dereferencable, class Method, class... Args>
 auto TryCallMethod(int, Dereferencable&&, Method&&, Args&&...)
-    -> decltype((std::declval<Dereferencable>()->*std::declval<Method>())(std::declval<Args>()...), std::true_type{});
+    -> decltype(((*std::declval<Dereferencable>()).*std::declval<Method>())(std::declval<Args>()...), std::true_type{});
 
 auto TryCallMethod(float, ...) -> std::false_type;
 
-template <class Ptr, class Tar>
-constexpr auto IsDereferencableV = IsDereferencable<Ptr, Tar>::value;
+template <class Ptr>
+constexpr auto IsDereferencableV = IsDereferencable<Ptr>::value;
 
 template <class Dereferencable, class Method>
 struct CanUsePointerToMemberFunction : std::false_type {};
@@ -139,7 +139,25 @@ struct CanUsePointerToMemberFunction : std::false_type {};
 template <class Dereferencable, class R, class Class, class... Args>
 struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...)>
     : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...)>(),
-                             std::declval<Args>...)) {};
+                             std::declval<Args>()...)) {};
+
+template <class Dereferencable, class R, class Class, class... Args>
+struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const>
+    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const>(),
+                             std::declval<Args>()...)) {};
+
+#if !(__cplusplus < 201703L)
+template <class Dereferencable, class R, class Class, class... Args>
+struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) noexcept>
+    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) noexcept>(),
+                             std::declval<Args>()...)) {};
+
+template <class Dereferencable, class R, class Class, class... Args>
+struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const noexcept>
+    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const noexcept>(),
+                             std::declval<Args>()...)) {};
+
+#endif
 
 template <class Dereferencable, class R>
 constexpr auto CanUsePointerToMemberFunctionV = CanUsePointerToMemberFunction<Dereferencable, R>::value;
