@@ -42,6 +42,7 @@ class ClosureImpl;
 
 // Overload for function pointer and functor (copy constructible)
 // It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
+// If it has placeholders, all placeholders must have been already replaced with getters.
 template <class R, class... Args, class Callable, class... StoredArgs>
 class ClosureImpl<
     R(Args...), Callable, ArgList<StoredArgs...>,
@@ -60,13 +61,6 @@ class ClosureImpl<
   using agents_type = typename maybe_has_placeholder::agents_type;
   static_assert(maybe_has_placeholder::value || __CLOSTD::is_same_v<agents_type, void>,
                 "agents type is not void when closure has placeholder");
-
-  static_assert(
-      __CLOSTD::is_convertible_v<
-          __CLOSTD::invoke_result_t<
-              callee_type, std::add_lvalue_reference_t<StoredArgs>... /*stored args are passed by lvalue*/, Args...>,
-          typename base::result_type>,
-      "the result type of the given callee is not match");
 
   template <class Callee, class... BoundArgs>
   explicit ClosureImpl(Callee&& f, BoundArgs&&... args)
@@ -90,23 +84,33 @@ class ClosureImpl<
   }
 
  private:
+  struct MapAndRun {
+    template <class AgentsType, class... RestArgs>
+    decltype(auto) operator()(ClosureImpl* this_ptr, AgentsType&& agents, RestArgs&&... args) {
+      placeholders::MapGettersToAgents(this_ptr->stored_list_, agents);
+      return this_ptr->RunHelper<std::false_type>(std::index_sequence_for<StoredArgs...>{},
+                                                  std::forward<RestArgs>(args)...);
+    }
+  };
+
   template <class MaybeHasPlaceHolder, std::enable_if_t<MaybeHasPlaceHolder::value, int> = 0, std::size_t... I>
   decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
     static_assert(!__CLOSTD::is_same_v<agents_type, void>, "agents type is void");
     return placeholders::MakeAgentsTupleAndApply<agents_type>(std::forward_as_tuple(std::forward<Args>(args)...),
-                                                              MapAndRun, this);
+                                                              MapAndRun{}, this);
   }
 
-  template <class AgentsType, class... RestArgs>
-  static decltype(auto) MapAndRun(ClosureImpl* this_ptr, AgentsType&& agents, RestArgs&&... args) {
-    placeholders::MapGettersToAgents(this_ptr->stored_list_, agents);
-    return this_ptr->RunHelper<std::false_type>(std::index_sequence_for<StoredArgs...>{},
-                                                std::forward<RestArgs>(args)...);
-  }
-
-  template <class MaybeHasPlaceHolder, std::enable_if_t<!MaybeHasPlaceHolder::value, int> = 0, std::size_t... I>
-  decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
-    return callable_(placeholders::Get<I>(stored_list_)..., std::forward<Args>(args)...);
+  template <class MaybeHasPlaceHolder, class... ArgsOrRestArgs, std::enable_if_t<!MaybeHasPlaceHolder::value, int> = 0,
+            std::size_t... I>
+  decltype(auto) RunHelper(std::index_sequence<I...>, ArgsOrRestArgs&&... args) {
+    static_assert(
+        __CLOSTD::is_convertible_v<
+            __CLOSTD::invoke_result_t<callee_type,
+                                      std::add_lvalue_reference_t<StoredArgs>... /*stored args are passed by lvalue*/,
+                                      ArgsOrRestArgs...>,
+            typename base::result_type>,
+        "the result type of the given callee is not match");
+    return callable_(placeholders::Get<I>(stored_list_)..., std::forward<ArgsOrRestArgs>(args)...);
   }
 
   callee_type callable_;
@@ -149,10 +153,17 @@ class ClosureImpl<R(Args...), Method, ArgList<CPtr, StoredArgs...>,
 };
 
 // Overload for function pointer
-template <class R, class... ClosureArgs, class... Args, class... Bounds,
-          std::enable_if_t<!placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
+template <class R, class... ClosureArgs, class... Args, class... Bounds>
 decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Bounds&&... bound_args) {
   return new ClosureImpl<R(ClosureArgs...), R (*)(Args...), ArgList<std::remove_reference_t<Bounds>...>>(
+      func, std::forward<Bounds>(bound_args)...);
+}
+
+template <class R, class... ClosureArgs, class... ConvertedBounds, class... Args, class... Bounds,
+          std::enable_if_t<placeholders::HasGetter<ArgList<ConvertedBounds...>>::value, int> = 0>
+decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, ArgList<ConvertedBounds...>, R (*func)(Args...),
+                               Bounds&&... bound_args) {
+  return new ClosureImpl<R(ClosureArgs...), R (*)(Args...), ArgList<std::remove_reference_t<ConvertedBounds>...>>(
       func, std::forward<Bounds>(bound_args)...);
 }
 
@@ -176,11 +187,6 @@ decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, Method method, CPtr&& cp
                          ArgList<std::remove_reference_t<CPtr>, std::remove_reference_t<Bounds>...>>(
       method, std::forward<CPtr>(cptr), std::forward<Bounds>(bound_args)...);
 }
-
-// TODO Overload for closure which has placeholders.
-template <class R, class... ClosureArgs, class... Args, class... Bounds,
-          std::enable_if_t<placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
-decltype(auto) MakeClosureImpl(ArgList<ClosureArgs...>, R (*func)(Args...), Bounds&&... bind_args) {}
 
 }  // namespace __closure
 
@@ -240,7 +246,7 @@ class Closure<R(Args...)> {
   // The parameters cannot be Args&&. We must enable pass-by-value in the first layer forwarding to ensure that an
   // lvalue can be accepted by a closure argument of non-reference type.
   result_type Run(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
-  result_type operator()(Args... args) const { return Run(std::forward<Args>(args)...); }
+  result_type operator()(Args... args) const { return pimpl_->Run(std::forward<Args>(args)...); }
 
   explicit operator bool() const noexcept { return static_cast<bool>(pimpl_); }
 
@@ -248,10 +254,22 @@ class Closure<R(Args...)> {
 };
 
 // MakeClosure for function pointer, remove cv-qualifier and noexcept
-template <class R, class... Args, class... Bounds>
+template <class R, class... Args, class... Bounds, std::enable_if_t<!placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
 decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
   using closure_args = __closure::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
   auto res = __closure::MakeClosureImpl(closure_args{}, func, std::forward<Bounds>(bound_args)...);
+  using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
+  return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
+}
+
+template <class R, class... Args, class... Bounds, std::enable_if_t<placeholders::HasPlaceHolderV<Bounds...>, int> = 0>
+decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
+  using bounds_l = ArgList<Bounds...>;
+  using args_l = ArgList<Args...>;
+  using replaced_types = __closure::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
+  using closure_args = ConcatT<__closure::PlaceHoldersAgentsPrototypeT<bounds_l, args_l>,
+                               __closure::RemovePrefixWeakT<bounds_l, args_l>>;
+  auto res = __closure::MakeClosureImpl(closure_args{}, replaced_types{}, func, std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
