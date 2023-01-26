@@ -32,8 +32,12 @@ struct Concat<std::index_sequence<I1...>, std::index_sequence<I2...>> {
 template <class L1, class L2>
 using ConcatT = typename Concat<L1, L2>::type;
 
-// When the placeholders is discontinuous, the closure will have several superfluous parameters which can take any
-// types. We use Auto to express them.
-struct Auto {};
+// When the placeholders are discontinuous, the closure will have several superfluous parameters which can take any
+// types. We use Any to express them.
+struct Any {
+  Any() = default;
+  template <class Tp>
+  constexpr Any(Tp&&) noexcept {}
+};
 
 }  // namespace closure

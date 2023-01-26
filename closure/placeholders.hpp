@@ -70,18 +70,19 @@ class Agent {
     return *this;
   }
   explicit operator bool() const noexcept { return ptr_; }
-  Tp&& Get() const noexcept { return std::forward<Tp>(*ptr_); }
+  Tp&& Target() const noexcept { return std::forward<Tp>(*ptr_); }
 
  private:
   std::remove_reference_t<Tp>* ptr_;
 };
 
 template <>
-class Agent<Auto> {
+class Agent<Any> {
  public:
   constexpr Agent() noexcept = default;
   template <class Tp>
   explicit constexpr Agent(Tp&&) noexcept {}
+  explicit constexpr operator bool() const noexcept { return false; }
 };
 
 template <class... Tps>
@@ -102,20 +103,45 @@ struct IsAgent<Agent<Tp>> : std::true_type {};
 template <class Tp>
 constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
 
+template <class AgentsTuple, size_t... I, class... Args, class Callback, class... CallbackArgs>
+decltype(auto) MakeAgentsTupleAndApplyImpl(std::index_sequence<I...>, std::tuple<Args...>&& args, Callback&& callback,
+                                           CallbackArgs&&... callback_args) noexcept {
+  constexpr auto rest = __CLOSTD::tuple_size_v<AgentsTuple> - sizeof...(I);
+  return callback(std::forward<CallbackArgs>(callback_args)...,
+                  AgentsTuple{std::get<I>(std::forward<decltype(args)>(args))...},
+                  std::get<rest + I>(std::forward<decltype(args)>(args))...);
+}
+
+template <class AgentsTuple, class... Args, class Callback, class... CallbackArgs>
+decltype(auto) MakeAgentsTupleAndApply(std::tuple<Args...>&& args, Callback&& callback,
+                                       CallbackArgs&&... callback_args) noexcept {
+  static_assert(sizeof...(Args) >= __CLOSTD::tuple_size_v<AgentsTuple>,
+                "the number of the given arguments is less than the agents size");
+  constexpr auto agents_size = __CLOSTD::tuple_size_v<AgentsTuple>;
+  return MakeAgentsTupleAndApplyImpl<AgentsTuple>(std::make_index_sequence<agents_size>{},
+                                                  std::forward<decltype(args)>(args), std::forward<Callback>(callback),
+                                                  std::forward<CallbackArgs>(callback_args)...);
+}
+
 template <class AgentsTuple, size_t I>
 class Getter {
   static_assert(I < __CLOSTD::tuple_size_v<AgentsTuple>, "the index of Getter is out of bounds");
   static_assert(IsAgentDecayV<decltype(std::get<I>(std::declval<AgentsTuple&>()))>, "Getter's target is not an agent");
 
  public:
+  using result_type = decltype(std::get<I>(std::declval<AgentsTuple&>()).Target());
+
   Getter() noexcept = default;
   Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
   // Mapping a Getter to an Agent.
-  void Map(AgentsTuple& tuple) { agents_tuple_ = tuple; }
-
-  decltype(auto) Get() const noexcept { return std::get<I>(agents_tuple_.Get()).Get(); }
+  void Map(AgentsTuple& tuple) noexcept { agents_tuple_ = tuple; }
+  result_type Get() const noexcept { return std::get<I>(agents_tuple_.Target()).Target(); }
+  operator result_type() const noexcept { return Get(); }
 
   explicit operator bool() const noexcept { return static_cast<bool>(agents_tuple_); }
+
+  Getter(const Getter&) noexcept {}  // A pseudo copy constructor, which is only used for copy traits
+  Getter& operator=(const Getter&) = delete;
 
  private:
   Agent<AgentsTuple&> agents_tuple_;
@@ -130,9 +156,23 @@ struct IsGetter<Getter<Tuple, I>> : std::true_type {};
 template <class Tp>
 constexpr auto IsGetterDecayV = IsGetter<std::decay_t<Tp>>{};
 
+template <class AgentsTuple>
+struct AgentsType {
+  using agents_type = AgentsTuple;
+};
+
+template <class>
+struct HasGetter : std::false_type, AgentsType<void> {};
+
+template <size_t I, class AgentsTuple, class... Tps>
+struct HasGetter<ArgList<Getter<AgentsTuple, I>, Tps...>> : std::true_type, AgentsType<AgentsTuple> {};
+
+template <class F, class... Os>
+struct HasGetter<ArgList<F, Os...>> : HasGetter<ArgList<Os...>> {};
+
 template <size_t I, class GettersTuple, class AgentsTuple,
           std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<GettersTuple>()))>, int> = 0>
-void TryMap(GettersTuple&& getters, AgentsTuple& agents, int& cnt) {
+void TryMap(GettersTuple&& getters, AgentsTuple& agents, int& cnt) noexcept {
   std::get<I>(std::forward<GettersTuple>(getters)).Map(agents);
   cnt++;
 }
@@ -141,7 +181,7 @@ template <size_t I, class... Tps>
 constexpr void TryMap(Tps&&...) noexcept {}
 
 template <size_t... I, class GettersTuple, class AgentsTuple>
-int MapGetters(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& agents) {
+int MapGettersImpl(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& agents) noexcept {
   using expander = int[];
   int cnt = 0;
   (void)expander{(TryMap<I>(std::forward<GettersTuple>(getters), agents, cnt), 0)...};
@@ -149,9 +189,9 @@ int MapGetters(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& a
 }
 
 template <class GettersTuple, class AgentsTuple>
-int MapGetters(GettersTuple&& getters, AgentsTuple& agents) {
+int MapGettersToAgents(GettersTuple&& getters, AgentsTuple& agents) noexcept {
   constexpr auto size = __CLOSTD::tuple_size_v<std::decay_t<GettersTuple>>;
-  return MapGetters(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
+  return MapGettersImpl(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
 }
 
 template <size_t I, class Tuple,
