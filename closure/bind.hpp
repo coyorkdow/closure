@@ -8,7 +8,7 @@
 
 namespace closure {
 
-namespace details {
+namespace __closure {
 
 template <class, class>
 struct IsPrefixWeak : std::false_type {};
@@ -151,7 +151,7 @@ struct Fill<ArgList<Component<I, Tp1>, Component<I + 1, Tp2>, Os...>> {
 template <size_t I1, class Tp1, size_t I2, class Tp2, class... Os>
 struct Fill<ArgList<Component<I1, Tp1>, Component<I2, Tp2>, Os...>, std::enable_if_t<I1 + 1 < I2>> {
   using type = ConcatT<ArgList<Component<I1, Tp1>>,
-                       typename Fill<ArgList<Component<I1 + 1, Auto>, Component<I2, Tp2>, Os...>>::type>;
+                       typename Fill<ArgList<Component<I1 + 1, Any>, Component<I2, Tp2>, Os...>>::type>;
 };
 
 template <size_t I, class Tp>
@@ -164,7 +164,7 @@ auto FillFromZero(ArgList<Component<0, Tp>, Os...>) -> typename Fill<ArgList<Com
 
 template <size_t I, class Tp, class... Os /*, class = std::enable_if_t<I != 0>*/>
 auto FillFromZero(ArgList<Component<I, Tp>, Os...>) ->
-    typename Fill<ArgList<Component<0, Auto>, Component<I, Tp>, Os...>>::type;
+    typename Fill<ArgList<Component<0, Any>, Component<I, Tp>, Os...>>::type;
 
 template <class Uniqued>
 using FillFromZeroT = decltype(FillFromZero(std::declval<Uniqued>()));
@@ -249,6 +249,6 @@ using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<
 template <class Prefix, class ArgL>
 using PlaceHoldersAgentsT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_type;
 
-}  // namespace details
+}  // namespace __closure
 
 }  // namespace closure
