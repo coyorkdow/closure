@@ -28,7 +28,7 @@ template <class R, class... Args>
 class ClosureImplBase<R(Args...)> {
  public:
   using result_type = R;
-  using arguments_type = ArgList<Args...>;
+  using args_type = ArgList<Args...>;
   using closure_type = R(Args...);
   ClosureImplBase() = default;
   virtual ~ClosureImplBase() = default;
@@ -193,23 +193,23 @@ class Closure<R(Args...)> {
 
  public:
   using result_type = R;
-  using arguments_type = typename impl_base_type::arguments_type;
+  using args_type = typename impl_base_type::args_type;
 
   Closure() = default;
 
   template <class... FuncArgs, class... Bounds>
   explicit Closure(R (*func)(FuncArgs...), Bounds&&... bound_args)
-      : pimpl_(__closure::MakeClosureImpl(arguments_type{}, func, std::forward<Bounds>(bound_args)...)) {}
+      : pimpl_(__closure::MakeClosureImpl(args_type{}, func, std::forward<Bounds>(bound_args)...)) {}
 
   template <class... FuncArgs>
   Closure& operator=(R (*func)(FuncArgs...)) {
-    pimpl_.reset(__closure::MakeClosureImpl(arguments_type{}, func));
+    pimpl_.reset(__closure::MakeClosureImpl(args_type{}, func));
     return *this;
   }
 
   template <class Functor, class... Bounds>
   explicit Closure(Functor&& functor, Bounds&&... bound_args)
-      : pimpl_(__closure::MakeClosureImpl<R>(arguments_type{}, std::forward<Functor>(functor),
+      : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor),
                                              std::forward<Bounds>(bound_args)...)) {
     static_assert(!__CLOSTD::is_same_v<std::decay_t<Functor>, Closure>, "this is not copy/move constructor");
   }
@@ -218,7 +218,7 @@ class Closure<R(Args...)> {
   // operator is const qualified, which may make the `Functor&&` prior to the `const Closure&`.
   template <class Functor, class = std::enable_if_t<!__CLOSTD::is_same_v<std::decay_t<Functor>, Closure>>>
   Closure& operator=(Functor&& functor) {
-    pimpl_.reset(__closure::MakeClosureImpl<R>(arguments_type{}, std::forward<Functor>(functor)));
+    pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor)));
     return *this;
   }
 
@@ -260,10 +260,12 @@ decltype(auto) MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
 // in noexcept.
 
 // MakeClosure for functor
-template <class R, class... ClosureArgs, class Functor, class... Bounds>
+template <class Functor, class... Bounds,
+          std::enable_if_t<traits::IsFunctorV<std::remove_reference_t<Functor>>, int> = 0>
 decltype(auto) MakeClosure(Functor&& functor, Bounds&&... bound_args) {
-  auto res = __closure::MakeClosureImpl<R>(ArgList<ClosureArgs...>{}, std::forward<Functor>(functor),
-                                           std::forward<Bounds>(bound_args)...);
+  using functor_traits = traits::FunctorTraits<std::remove_reference_t<Functor>>;
+  auto res = __closure::MakeClosureImpl<typename functor_traits::return_type>(
+      typename functor_traits::args_type{}, std::forward<Functor>(functor), std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }

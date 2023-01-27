@@ -6,6 +6,8 @@
 
 #include <type_traits>
 
+#include "closure/util.hpp"
+
 #ifdef __CLOSTD
 #error "Macro __CLOSTD is already defined"
 #endif
@@ -156,14 +158,45 @@ template <class Dereferencable, class R, class Class, class... Args>
 struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const noexcept>
     : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const noexcept>(),
                              std::declval<Args>()...)) {};
-
 #endif
 
 template <class Dereferencable, class R>
 constexpr auto CanUsePointerToMemberFunctionV = CanUsePointerToMemberFunction<Dereferencable, R>::value;
 
+template <class Op>
+struct FunctorTraitsImpl {};
+
+template <class R, class Class, class... Args>
+struct FunctorTraitsImpl<R (Class::*)(Args...)> {
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+template <class R, class Class, class... Args>
+struct FunctorTraitsImpl<R (Class::*)(Args...) const> {
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+#if !(__cplusplus < 201703L)
+template <class R, class Class, class... Args>
+struct FunctorTraitsImpl<R (Class::*)(Args...) noexcept> {
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+template <class R, class Class, class... Args>
+struct FunctorTraitsImpl<R (Class::*)(Args...) const noexcept> {
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+#endif
+
+template <class F, class Op = decltype(&F::operator())>
+struct FunctorTraits : FunctorTraitsImpl<Op> {};
+
 template <class Tp>
-auto IsFunctorImpl(int) -> decltype(&Tp::operator(), std::true_type{});
+auto IsFunctorImpl(int) -> decltype(FunctorTraits<Tp>{}, std::true_type{});
 
 template <class Tp>
 auto IsFunctorImpl(...) -> std::false_type;
