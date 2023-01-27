@@ -305,7 +305,7 @@ TEST(TestClosure, FunctionPointer) {
 TEST(TestClosure, Functor) {
   std::string exp = "11+12+13";
   auto wrap_sum = [=]() { return calculate_sum(exp); };
-  auto closure1 = MakeClosure<std::size_t>(wrap_sum);
+  auto closure1 = MakeClosure(wrap_sum);
   EXPECT_EQ(closure1.Run(), 36);
   std::function<float()> wrap_twice(wrap_sum);
   EXPECT_TRUE(wrap_twice);
@@ -317,14 +317,14 @@ TEST(TestClosure, Functor) {
 TEST(TestClosure, Copy) {
   std::string exp = "11+12+13";
   auto lambda1 = [=]() { return calculate_sum(exp); };
-  auto closure1 = MakeClosure<int>(lambda1);
+  auto closure1 = MakeClosure(lambda1);
   EXPECT_EQ(closure1(), 36);
   int v = 0;
   auto lambda2 = [&]() {
     test_ref(v);
     return v;
   };
-  auto closure2 = MakeClosure<int>(lambda2);
+  auto closure2 = MakeClosure(lambda2);
   EXPECT_EQ(closure2(), 1);
   static_assert(__CLOSTD::is_same_v<decltype(closure1), decltype(closure2)>, "");
   EXPECT_TRUE(closure2.Copyable());
