@@ -47,13 +47,13 @@ template <class Callable, class... Args, class... StoredArgs>
 class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
   using agents_type = typename placeholders::HasGetter<ArgList<StoredArgs...>>::agents_type;
   /*
-   * A gcc bug makes the full template specialization in the class scope cannot be compiled. Use function overload
+   * A gcc bug makes full template specialization in the class scope cannot be compiled. Use function overload
    * instead.
    * Related bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
    */
 
   template <class Agents>
-  static auto GetRealArgs(int) -> typename __closure::TailN<__CLOSTD::tuple_size_v<Agents>, ArgList<Args...>>::type;
+  static auto GetRealArgs(int) -> typename __closure::TailN<std::tuple_size<Agents>::value, ArgList<Args...>>::type;
   template <class Agent>
   static auto GetRealArgs(...) -> ArgList<Args...>;
 
