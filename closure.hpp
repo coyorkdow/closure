@@ -59,7 +59,7 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
 
   template <class... RealArgs>
   static auto TryInvoke(ArgList<RealArgs...>, int)  // stored args are passed by lvalue
-      -> __clostd::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
+      -> __CLOSTD::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
   static auto TryInvoke(...) -> std::false_type;
 
   template <class Tp>
