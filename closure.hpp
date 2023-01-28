@@ -47,7 +47,7 @@ template <class R, class... Args, class Callable, class... StoredArgs>
 class ClosureImpl<
     R(Args...), Callable, ArgList<StoredArgs...>,
     std::enable_if_t<(__CLOSTD::is_function_v<std::remove_pointer_t<Callable>> || traits::IsFunctorV<Callable>)>>
-    : public ClosureImplBase<R(Args...)> {
+    : public ClosureImplBase<R(Args...)>, private std::tuple<StoredArgs...> {
   using base = ClosureImplBase<R(Args...)>;
 
  public:
@@ -64,7 +64,7 @@ class ClosureImpl<
 
   template <class Callee, class... BoundArgs>
   explicit ClosureImpl(Callee&& f, BoundArgs&&... args)
-      : callable_(std::forward<Callee>(f)), stored_list_(std::forward<BoundArgs>(args)...) {}
+      : stored_types(std::forward<BoundArgs>(args)...), callable_(std::forward<Callee>(f)) {}
 
   ClosureImpl(const ClosureImpl& rhs) = default;  // maybe deleted
   template <class MaybeCopyable, std::enable_if_t<MaybeCopyable::value, int> = 0>
@@ -87,7 +87,7 @@ class ClosureImpl<
   struct MapAndRun {
     template <class AgentsType, class... RestArgs>
     decltype(auto) operator()(ClosureImpl* this_ptr, AgentsType&& agents, RestArgs&&... args) {
-      placeholders::MapGettersToAgents(this_ptr->stored_list_, agents);
+      placeholders::MapGettersToAgents(static_cast<stored_types&>(*this_ptr), agents);
       return this_ptr->RunHelper<std::false_type>(std::index_sequence_for<StoredArgs...>{},
                                                   std::forward<RestArgs>(args)...);
     }
@@ -110,11 +110,10 @@ class ClosureImpl<
                                       ArgsOrRestArgs...>,
             typename base::result_type>,
         "the result type of the given callee is not match");
-    return callable_(placeholders::Get<I>(stored_list_)..., std::forward<ArgsOrRestArgs>(args)...);
+    return callable_(placeholders::Get<I>(static_cast<stored_types&>(*this))..., std::forward<ArgsOrRestArgs>(args)...);
   }
 
   callee_type callable_;
-  stored_types stored_list_;
 };
 
 // TODO Overload for class method
@@ -123,7 +122,7 @@ template <class R, class... Args, class Method, class CPtr, class... StoredArgs>
 class ClosureImpl<R(Args...), Method, ArgList<CPtr, StoredArgs...>,
                   std::enable_if_t<__CLOSTD::is_member_function_pointer_v<Method> && traits::IsDereferencableV<CPtr> &&
                                    traits::CanUsePointerToMemberFunctionV<CPtr, Method>>>
-    : public ClosureImplBase<R(Args...)> {
+    : public ClosureImplBase<R(Args...)>, private std::tuple<CPtr, StoredArgs...> {
   using base = ClosureImplBase<R(Args...)>;
 
   static_assert(traits::CanUsePointerToMemberFunctionV<CPtr, Method>, "");
@@ -135,7 +134,7 @@ class ClosureImpl<R(Args...), Method, ArgList<CPtr, StoredArgs...>,
   template <class CArg, class... BoundArgs,
             std::enable_if_t<!placeholders::HasPlaceHolderV<std::decay_t<BoundArgs>...>, int> = 0>
   explicit ClosureImpl(callee_type f, CArg&& carg, BoundArgs&&... args)
-      : callable_(f), stored_list_(std::forward<CArg>(carg), std::forward<BoundArgs>(args)...) {}
+      : stored_types(std::forward<CArg>(carg), std::forward<BoundArgs>(args)...), callable_(f) {}
 
   typename base::result_type Run(Args&&... args) override {
     return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
@@ -144,12 +143,12 @@ class ClosureImpl<R(Args...), Method, ArgList<CPtr, StoredArgs...>,
  private:
   template <std::size_t... I>
   typename base::result_type RunHelper(std::index_sequence<I...>, Args&&... args) {
-    return ((*std::get<0>(stored_list_)).*callable_)(std::get<I + 1>(stored_list_)..., std::forward<Args>(args)...);
+    auto& stored_list = static_cast<stored_types&>(*this);
+    return ((*std::get<0>(stored_list)).*callable_)(std::get<I + 1>(stored_list)..., std::forward<Args>(args)...);
   }
 
  private:
   callee_type callable_;
-  stored_types stored_list_;
 };
 
 // Overload for function pointer
