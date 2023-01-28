@@ -260,6 +260,13 @@ TEST(TestAnyType, Any) {
   test("123");
 }
 
+TEST(TestClosure, EmptyBaseOptimize) {
+  using c1 = __closure::ClosureImpl<void(), void (*)(), ArgList<>>;
+  // TODO eliminate vptr
+  static_assert(sizeof(c1) == 16, "");
+  //  static_assert(sizeof(c1) == 8, "");
+}
+
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
 
 int forwarding_test(std::unique_ptr<int> p) { return *p; }
@@ -322,7 +329,8 @@ TEST(TestClosureWithPlaceHolders, FunctionPointer) {
   static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(const int&, double, int, int)>>, "");
   EXPECT_EQ(closure1(1, 2, 3, 4), 10);
   auto closure2 = MakeClosure(sum, closure::PlaceHolder<2>(), closure::PlaceHolder<1>(), closure::PlaceHolder<3>());
-  static_assert(__CLOSTD::is_same_v<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>, "");
+  static_assert(
+      __CLOSTD::is_same_v<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>, "");
   EXPECT_EQ(closure2("ignored", 1, 2, 3, 4), 10);
 }
 
