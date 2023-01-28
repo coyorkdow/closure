@@ -28,6 +28,17 @@ template <class... Args1, class... Args2>
 constexpr bool IsPrefixWeakV<ArgList<Args1...>, ArgList<Args2...>> =
     IsPrefixWeak<ArgList<Args1...>, ArgList<Args2...>>::value;
 
+template <size_t N, class ArgL, class = void>
+struct TailN;
+
+template <size_t N, class F, class... Os>
+struct TailN<N, ArgList<F, Os...>, std::enable_if_t<0 < N>> : TailN<N - 1, ArgList<Os...>> {};
+
+template <class... Args>
+struct TailN<0, ArgList<Args...>> {
+  using type = ArgList<Args...>;
+};
+
 template <class Prefix, class ArgL>
 struct RemovePrefixWeak;
 
