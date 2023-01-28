@@ -46,29 +46,30 @@ class Validator;
 template <class Callable, class... Args, class... StoredArgs>
 class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
   using agents_type = typename placeholders::HasGetter<ArgList<StoredArgs...>>::agents_type;
+  /*
+   * A gcc bug makes the full template specialization in the class scope cannot be compiled. Use function overload
+   * instead.
+   * Related bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
+   */
 
   template <class Agents>
-  struct GetRealArgs {
-    using type = typename __closure::TailN<__CLOSTD::tuple_size_v<Agents>, ArgList<Args...>>::type;
-  };
-  template <>
-  struct GetRealArgs<void> {
-    using type = ArgList<Args...>;
-  };
+  static auto GetRealArgs(int) -> typename __closure::TailN<__CLOSTD::tuple_size_v<Agents>, ArgList<Args...>>::type;
+  template <class Agent>
+  static auto GetRealArgs(...) -> ArgList<Args...>;
 
   template <class... RealArgs>
-  static auto TryInvoke(ArgList<RealArgs...>, int) -> __clostd::invoke_result_t<
-      Callable, std::add_lvalue_reference_t<StoredArgs>... /*stored args are passed by lvalue*/, RealArgs...>;
+  static auto TryInvoke(ArgList<RealArgs...>, int)  // stored args are passed by lvalue
+      -> __clostd::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
   static auto TryInvoke(...) -> std::false_type;
 
-  template <class>
-  struct Invokable : std::true_type {};
-  template <>
-  struct Invokable<std::false_type> : std::false_type {};
+  template <class Tp>
+  static auto Invokable(Tp) -> std::true_type;
+  static auto Invokable(std::false_type) -> std::false_type;
 
  public:
-  using invoke_result = decltype(TryInvoke(std::declval<typename GetRealArgs<agents_type>::type>(), 0));
-  static constexpr bool is_invokable = Invokable<invoke_result>::value;
+  using invoke_result = decltype(TryInvoke(GetRealArgs<agents_type>(), 0));
+  // invoke_result might be void, std::declval<void>() is invalid, use pointer type instead.
+  static constexpr bool is_invokable = decltype(Invokable(std::declval<invoke_result*>()))::value;
 };
 
 // Overload for function pointer and functor
