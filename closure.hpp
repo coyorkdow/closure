@@ -40,7 +40,7 @@ class ClosureImplBase<R(Args...)> {
 template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
 class ClosureImpl;
 
-// Overload for function pointer and functor (copy constructible)
+// Overload for function pointer and functor
 // It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
 // If it has placeholders, all placeholders must have been already replaced with getters.
 template <class R, class... Args, class Callable, class... StoredArgs>
