@@ -53,7 +53,7 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
    */
 
   template <class Agents>
-  static auto GetRealArgs(int) -> typename __closure::TailN<__CLOSTD::tuple_size_v<Agents>, ArgList<Args...>>::type;
+  static auto GetRealArgs(int) -> typename __closure::TailN<std::tuple_size<Agents>::value, ArgList<Args...>>::type;
   template <class Agent>
   static auto GetRealArgs(...) -> ArgList<Args...>;
 
