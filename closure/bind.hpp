@@ -236,18 +236,17 @@ struct ReplacePlaceHoldersWithGetters {
  private:
   using ph_args = GetPlaceHoldersCorrespondTypesT<Prefix, ArgL>;
   using phl = placeholders::FilterPlaceHolderT<Prefix>;
-  using sorted = SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
 
  public:
-  using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<sorted>>::type;
-  using agents_type = placeholders::MakeAgentsT<sorted>;
+  using agents_prototype = SortUniqueFillPlaceHoldersCorrespondTypesT<ph_args, phl>;
+  using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<agents_prototype>>::type;
 };
 
 template <class Prefix, class ArgL>
 using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::type;
 
 template <class Prefix, class ArgL>
-using PlaceHoldersAgentsT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_type;
+using PlaceHoldersAgentsPrototypeT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_prototype;
 
 }  // namespace __closure
 

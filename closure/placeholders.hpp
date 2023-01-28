@@ -103,13 +103,13 @@ struct IsAgent<Agent<Tp>> : std::true_type {};
 template <class Tp>
 constexpr auto IsAgentDecayV = IsAgent<std::decay_t<Tp>>{};
 
-template <class AgentsTuple, size_t... I, class... Args, class Callback, class... CallbackArgs>
-decltype(auto) MakeAgentsTupleAndApplyImpl(std::index_sequence<I...>, std::tuple<Args...>&& args, Callback&& callback,
+template <class AgentsTuple, size_t... I, size_t... J, class... Args, class Callback, class... CallbackArgs>
+decltype(auto) MakeAgentsTupleAndApplyImpl(std::index_sequence<I...>, std::index_sequence<J...>,
+                                           std::tuple<Args...>&& args, Callback&& callback,
                                            CallbackArgs&&... callback_args) noexcept {
-  constexpr auto rest = __CLOSTD::tuple_size_v<AgentsTuple> - sizeof...(I);
   return callback(std::forward<CallbackArgs>(callback_args)...,
                   AgentsTuple{std::get<I>(std::forward<decltype(args)>(args))...},
-                  std::get<rest + I>(std::forward<decltype(args)>(args))...);
+                  std::get<sizeof...(I) + J>(std::forward<decltype(args)>(args))...);
 }
 
 template <class AgentsTuple, class... Args, class Callback, class... CallbackArgs>
@@ -119,6 +119,7 @@ decltype(auto) MakeAgentsTupleAndApply(std::tuple<Args...>&& args, Callback&& ca
                 "the number of the given arguments is less than the agents size");
   constexpr auto agents_size = __CLOSTD::tuple_size_v<AgentsTuple>;
   return MakeAgentsTupleAndApplyImpl<AgentsTuple>(std::make_index_sequence<agents_size>{},
+                                                  std::make_index_sequence<sizeof...(Args) - agents_size>{},
                                                   std::forward<decltype(args)>(args), std::forward<Callback>(callback),
                                                   std::forward<CallbackArgs>(callback_args)...);
 }

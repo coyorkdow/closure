@@ -222,27 +222,42 @@ TEST(TestAgentAndGetter, StableSort) {
       "");
 }
 
-TEST(TestAnyType, Any) {
-  auto test = [](closure::Any) {};
-  test(1);
-  test(0.0);
-  test(1ULL);
-  test("123");
+TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters1) {
+  using namespace placeholders;
+  using namespace __closure;
+  using args = ArgList<int, double, std::string, long, char, float, void*, unsigned>;
+  using binds = ArgList<PH<3>, PH<2>, std::string, PH<0>, char, PH<5>>;
+  using result = ReplacePlaceHoldersWithGettersT<binds, args>;
+
+  using agents_type = std::tuple<Agent<long>, Agent<Any>, Agent<double>, Agent<int>, Agent<Any>, Agent<float>>;
+
+  static_assert(__CLOSTD::is_same_v<result, ArgList<Getter<agents_type, 3>, Getter<agents_type, 2>, std::string,
+                                                    Getter<agents_type, 0>, char, Getter<agents_type, 5>>>,
+                "");
+  static_assert(__CLOSTD::is_same_v<agents_type, MakeAgentsT<PlaceHoldersAgentsPrototypeT<binds, args>>>, "");
 }
 
-TEST(TestAgentAndGetter, ReplacePlaceHoldersCorrespondTypes) {
+TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
   using namespace placeholders;
   using namespace __closure;
   using args = ArgList<int, double, std::string, long, char, float, void*, unsigned>;
   using binds = ArgList<PH<3>, PH<2>, std::string, PH<2>, char, float, PH<5>>;
   using result = ReplacePlaceHoldersWithGettersT<binds, args>;
 
-  using bind_type = std::tuple<Agent<Any>, Agent<Any>, Agent<double>, Agent<int>, Agent<Any>, Agent<void*>>;
+  using agents_type = std::tuple<Agent<Any>, Agent<Any>, Agent<double>, Agent<int>, Agent<Any>, Agent<void*>>;
 
-  static_assert(__CLOSTD::is_same_v<result, ArgList<Getter<bind_type, 3>, Getter<bind_type, 2>, std::string,
-                                                    Getter<bind_type, 2>, char, float, Getter<bind_type, 5>>>,
+  static_assert(__CLOSTD::is_same_v<result, ArgList<Getter<agents_type, 3>, Getter<agents_type, 2>, std::string,
+                                                    Getter<agents_type, 2>, char, float, Getter<agents_type, 5>>>,
                 "");
-  static_assert(__CLOSTD::is_same_v<bind_type, PlaceHoldersAgentsT<binds, args>>, "");
+  static_assert(__CLOSTD::is_same_v<agents_type, MakeAgentsT<PlaceHoldersAgentsPrototypeT<binds, args>>>, "");
+}
+
+TEST(TestAnyType, Any) {
+  auto test = [](closure::Any) {};
+  test(1);
+  test(0.0);
+  test(1ULL);
+  test("123");
 }
 
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
@@ -300,6 +315,15 @@ TEST(TestClosure, FunctionPointer) {
   Closure<int(std::string)> closure4;
   closure4 = calculate_sum;
   EXPECT_EQ(closure4("1+2+3"), 6);
+}
+
+TEST(TestClosureWithPlaceHolders, FunctionPointer) {
+  auto closure1 = MakeClosure(sum, closure::PlaceHolder<0>());
+  static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(const int&, double, int, int)>>, "");
+  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
+  auto closure2 = MakeClosure(sum, closure::PlaceHolder<2>(), closure::PlaceHolder<1>(), closure::PlaceHolder<3>());
+  static_assert(__CLOSTD::is_same_v<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>, "");
+  EXPECT_EQ(closure2("ignored", 1, 2, 3, 4), 10);
 }
 
 TEST(TestClosure, Functor) {
