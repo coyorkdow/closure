@@ -146,11 +146,9 @@ TEST(TestAgentAndGetter, GettersMapping) {
   using Getter0 = Getter<decltype(agents), 0>;
   static_assert(IsGetterDecayV<Getter0>, "");
   Getter0 getter;
-  ASSERT_FALSE(getter);
   EXPECT_EQ(std::get<0>(agents).Target(), "1234");
-  getter.Map(agents);
   EXPECT_EQ(std::get<0>(agents).Target(), "1234");
-  EXPECT_EQ(getter.Get(), "1234");
+  EXPECT_EQ(getter.Get(agents), "1234");
 #if __cplusplus < 201703L
   auto& v1 = std::get<0>(agents);
   auto& v2 = std::get<1>(agents);
@@ -163,18 +161,16 @@ TEST(TestAgentAndGetter, GettersMapping) {
   static_assert(!IsGetterDecayV<decltype(std::get<0>(std::declval<decltype(getters)>()))>, "");
   static_assert(IsGetterDecayV<decltype(std::get<1>(std::declval<decltype(getters)>()))>, "");
   static_assert(IsGetterDecayV<decltype(std::get<2>(std::declval<decltype(getters)>()))>, "");
-  int cnt = placeholders::MapGettersToAgents(getters, agents);
-  EXPECT_EQ(cnt, 2);
-  EXPECT_EQ(v2.Target(), std::get<1>(getters).Get());
+  EXPECT_EQ(v2.Target(), std::get<1>(getters).Get(agents));
   arg1 = std::string("modified");
   arg2 = 2;
   EXPECT_EQ(v2.Target(), 2);
-  EXPECT_EQ(getter.Get(), v1.Target());
-  EXPECT_EQ(placeholders::Get<0>(getters), 0);
-  EXPECT_EQ(placeholders::Get<1>(getters), v2.Target());
+  EXPECT_EQ(getter.Get(agents), v1.Target());
+  EXPECT_EQ(placeholders::TryMapAndGet<0>(getters, agents), 0);
+  EXPECT_EQ(placeholders::TryMapAndGet<1>(getters, agents), v2.Target());
   EXPECT_EQ(v2.Target(), 2);
-  EXPECT_EQ(placeholders::Get<1>(getters), 2);
-  EXPECT_EQ(placeholders::Get<2>(getters), v1.Target());
+  EXPECT_EQ(placeholders::TryMapAndGet<1>(getters, agents), 2);
+  EXPECT_EQ(placeholders::TryMapAndGet<2>(getters, agents), v1.Target());
 
   static_assert(__CLOSTD::is_copy_constructible_v<decltype(getters)>, "");
 }

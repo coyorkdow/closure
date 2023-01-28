@@ -135,17 +135,11 @@ class Getter {
   Getter() noexcept = default;
   Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
   // Mapping a Getter to an Agent.
-  void Map(AgentsTuple& tuple) noexcept { agents_tuple_ = tuple; }
-  result_type Get() const noexcept { return std::get<I>(agents_tuple_.Target()).Target(); }
+  result_type Get(AgentsTuple& agents) const noexcept { return std::get<I>(agents).Target(); }
   operator result_type() const noexcept { return Get(); }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(agents_tuple_); }
-
-  Getter(const Getter&) noexcept {}  // A pseudo copy constructor, which is only used for copy traits
+  Getter(const Getter&) noexcept = default;  // A pseudo copy constructor, which is only used for copy traits
   Getter& operator=(const Getter&) = delete;
-
- private:
-  Agent<AgentsTuple&> agents_tuple_;
 };
 
 template <class>
@@ -171,39 +165,15 @@ struct HasGetter<ArgList<Getter<AgentsTuple, I>, Tps...>> : std::true_type, Agen
 template <class F, class... Os>
 struct HasGetter<ArgList<F, Os...>> : HasGetter<ArgList<Os...>> {};
 
-template <size_t I, class GettersTuple, class AgentsTuple,
-          std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<GettersTuple>()))>, int> = 0>
-void TryMap(GettersTuple&& getters, AgentsTuple& agents, int& cnt) noexcept {
-  std::get<I>(std::forward<GettersTuple>(getters)).Map(agents);
-  cnt++;
-}
-
-template <size_t I, class... Tps>
-constexpr void TryMap(Tps&&...) noexcept {}
-
-template <size_t... I, class GettersTuple, class AgentsTuple>
-int MapGettersImpl(std::index_sequence<I...>, GettersTuple&& getters, AgentsTuple& agents) noexcept {
-  using expander = int[];
-  int cnt = 0;
-  (void)expander{(TryMap<I>(std::forward<GettersTuple>(getters), agents, cnt), 0)...};
-  return cnt;
-}
-
-template <class GettersTuple, class AgentsTuple>
-int MapGettersToAgents(GettersTuple&& getters, AgentsTuple& agents) noexcept {
-  constexpr auto size = __CLOSTD::tuple_size_v<std::decay_t<GettersTuple>>;
-  return MapGettersImpl(std::make_index_sequence<size>{}, std::forward<GettersTuple>(getters), agents);
-}
-
-template <size_t I, class Tuple,
+template <size_t I, class Tuple, class Agents,
           std::enable_if_t<IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
-decltype(auto) Get(Tuple&& tuple) noexcept {
-  return std::get<I>(std::forward<Tuple>(tuple)).Get();
+decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&& agents) noexcept {
+  return std::get<I>(std::forward<Tuple>(tuple)).Get(agents);
 }
 
-template <size_t I, class Tuple,
+template <size_t I, class Tuple, class Agents,
           std::enable_if_t<!IsGetterDecayV<decltype(std::get<I>(std::declval<Tuple>()))>, int> = 0>
-decltype(auto) Get(Tuple&& tuple) noexcept {
+decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&&) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple));
 }
 

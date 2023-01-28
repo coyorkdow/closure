@@ -40,6 +40,38 @@ class ClosureImplBase<R(Args...)> {
 template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
 class ClosureImpl;
 
+template <class Callable, class Args, class StoredArgs>
+class Validator;
+
+template <class Callable, class... Args, class... StoredArgs>
+class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
+  using agents_type = typename placeholders::HasGetter<ArgList<StoredArgs...>>::agents_type;
+  /*
+   * A gcc bug makes full template specialization in the class scope cannot be compiled. Use function overload
+   * instead.
+   * Related bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
+   */
+
+  template <class Agents>
+  static auto GetRealArgs(int) -> typename __closure::TailN<std::tuple_size<Agents>::value, ArgList<Args...>>::type;
+  template <class Agent>
+  static auto GetRealArgs(...) -> ArgList<Args...>;
+
+  template <class... RealArgs>
+  static auto TryInvoke(ArgList<RealArgs...>, int)  // stored args are passed by lvalue
+      -> __CLOSTD::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
+  static auto TryInvoke(...) -> std::false_type;
+
+  template <class Tp>
+  static auto Invokable(Tp) -> std::true_type;
+  static auto Invokable(std::false_type) -> std::false_type;
+
+ public:
+  using invoke_result = decltype(TryInvoke(GetRealArgs<agents_type>(), 0));
+  // invoke_result might be void, std::declval<void>() is invalid, use pointer type instead.
+  static constexpr bool is_invokable = decltype(Invokable(std::declval<invoke_result*>()))::value;
+};
+
 // Overload for function pointer and functor
 // It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
 // If it has placeholders, all placeholders must have been already replaced with getters.
@@ -49,6 +81,12 @@ class ClosureImpl<
     std::enable_if_t<(__CLOSTD::is_function_v<std::remove_pointer_t<Callable>> || traits::IsFunctorV<Callable>)>>
     : public ClosureImplBase<R(Args...)>, private std::tuple<StoredArgs...> {
   using base = ClosureImplBase<R(Args...)>;
+
+  using validator = Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>>;
+  static_assert(validator::is_invokable, "the given arguments don't match the arguments of callee");
+  static_assert(!validator::is_invokable ||
+                    __CLOSTD::is_convertible_v<typename validator::invoke_result, typename base::result_type>,
+                "the result type of the given callee is not match");
 
  public:
   using callee_type = Callable;
@@ -60,7 +98,7 @@ class ClosureImpl<
   using maybe_has_placeholder = placeholders::HasGetter<ArgList<StoredArgs...>>;
   using agents_type = typename maybe_has_placeholder::agents_type;
   static_assert(maybe_has_placeholder::value || __CLOSTD::is_same_v<agents_type, void>,
-                "agents type is not void when closure has placeholder");
+                "agents type is not void when closure doesn't have placeholder");
 
   template <class Callee, class... BoundArgs>
   explicit ClosureImpl(Callee&& f, BoundArgs&&... args)
@@ -85,32 +123,24 @@ class ClosureImpl<
 
  private:
   struct MapAndRun {
-    template <class AgentsType, class... RestArgs>
-    decltype(auto) operator()(ClosureImpl* this_ptr, AgentsType&& agents, RestArgs&&... args) {
-      placeholders::MapGettersToAgents(static_cast<stored_types&>(*this_ptr), agents);
-      return this_ptr->RunHelper<std::false_type>(std::index_sequence_for<StoredArgs...>{},
-                                                  std::forward<RestArgs>(args)...);
+    template <size_t... I, class... RestArgs>
+    decltype(auto) operator()(std::index_sequence<I...>, ClosureImpl* this_ptr, agents_type&& agents,
+                              RestArgs&&... args) {
+      return this_ptr->callable_(placeholders::TryMapAndGet<I>(static_cast<stored_types&>(*this_ptr), agents)...,
+                                 std::forward<RestArgs>(args)...);
     }
   };
 
   template <class MaybeHasPlaceHolder, std::enable_if_t<MaybeHasPlaceHolder::value, int> = 0, std::size_t... I>
-  decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
+  decltype(auto) RunHelper(std::index_sequence<I...> seq, Args&&... args) {
     static_assert(!__CLOSTD::is_same_v<agents_type, void>, "agents type is void");
     return placeholders::MakeAgentsTupleAndApply<agents_type>(std::forward_as_tuple(std::forward<Args>(args)...),
-                                                              MapAndRun{}, this);
+                                                              MapAndRun{}, seq, this);
   }
 
-  template <class MaybeHasPlaceHolder, class... ArgsOrRestArgs, std::enable_if_t<!MaybeHasPlaceHolder::value, int> = 0,
-            std::size_t... I>
-  decltype(auto) RunHelper(std::index_sequence<I...>, ArgsOrRestArgs&&... args) {
-    static_assert(
-        __CLOSTD::is_convertible_v<
-            __CLOSTD::invoke_result_t<callee_type,
-                                      std::add_lvalue_reference_t<StoredArgs>... /*stored args are passed by lvalue*/,
-                                      ArgsOrRestArgs...>,
-            typename base::result_type>,
-        "the result type of the given callee is not match");
-    return callable_(placeholders::Get<I>(static_cast<stored_types&>(*this))..., std::forward<ArgsOrRestArgs>(args)...);
+  template <class MaybeHasPlaceHolder, std::enable_if_t<!MaybeHasPlaceHolder::value, int> = 0, std::size_t... I>
+  decltype(auto) RunHelper(std::index_sequence<I...>, Args&&... args) {
+    return callable_(std::get<I>(static_cast<stored_types&>(*this))..., std::forward<Args>(args)...);
   }
 
   callee_type callable_;
