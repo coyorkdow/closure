@@ -1,4 +1,4 @@
-name: Linux
+name: macOS
 
 on:
   push:
@@ -11,8 +11,8 @@ env:
   BUILD_TYPE: Release
 
 jobs:
-  linux_cpp14:
-    runs-on: ubuntu-latest
+  macOS_cpp14:
+    runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v3
@@ -27,8 +27,8 @@ jobs:
 
     - name: Test
       run: cd build && ./closure_test
-  linux_cpp17:
-    runs-on: ubuntu-latest
+  macOS_cpp17:
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v3
