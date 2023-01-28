@@ -3,6 +3,7 @@
  **Closure is a c++ functional object implementation. It integrates the std::function and std::bind, and even more powerful.**
 
 [![Linux Status](https://github.com/coyorkdow/closure/actions/workflows/linux.yml/badge.svg)](https://github.com/coyorkdow/closure/actions/workflows/linux.yml)
+[![macOS Status](https://github.com/coyorkdow/closure/actions/workflows/macos.yml/badge.svg)](https://github.com/coyorkdow/closure/actions/workflows/macos.yml)
 
 Closure is header-only. To use Closure, simply copy `closure.hpp` and dicectory `closure` into your project.
 
