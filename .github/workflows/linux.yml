@@ -1,6 +1,7 @@
 name: Linux
 
 on:
+  workflow_dispatch: # for manual workflow trigger
   push:
     branches: [ "main" ]
   pull_request:
@@ -13,19 +14,25 @@ env:
 jobs:
   linux_cpp11:
     runs-on: ubuntu-latest
-    compiler: gcc
-    gcc: 4
 
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+      - name: Prepare
+        run: |
+          sudo apt update
+          sudo apt install gcc-4 g++-4
 
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build .
+        env:
+          CC: gcc-4
+          CXX: g++-4
 
       - name: Test
         run: cd build && ./closure_test
@@ -38,11 +45,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
       - name: Test
         run: cd build && ./closure_test
@@ -55,11 +62,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build .
 
       - name: Test
         run: cd build && ./closure_test

@@ -1,6 +1,7 @@
 name: macOS
 
 on:
+  workflow_dispatch: # for manual workflow trigger
   push:
     branches: [ "main" ]
   pull_request:
@@ -19,11 +20,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
       - name: Test
         run: cd build && ./closure_test
@@ -36,11 +37,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
       - name: Test
         run: cd build && ./closure_test
@@ -53,11 +54,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
       - name: Test
         run: cd build && ./closure_test
