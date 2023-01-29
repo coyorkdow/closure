@@ -18,15 +18,8 @@ struct IsPrefixWeak<ArgList<>, ArgList<Args2...>> : std::true_type {};
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>
-    : std::conditional_t<placeholders::IsPlaceHolderV<F1> || __CLOSTD::is_convertible_v<F1, F2>,
+    : std::conditional_t<placeholders::IsPlaceHolder<F1>::value || std::is_convertible<F1, F2>::value,
                          IsPrefixWeak<ArgList<Os1...>, ArgList<Os2...>>, std::false_type> {};
-
-template <class, class>
-constexpr bool IsPrefixWeakV = false;
-
-template <class... Args1, class... Args2>
-constexpr bool IsPrefixWeakV<ArgList<Args1...>, ArgList<Args2...>> =
-    IsPrefixWeak<ArgList<Args1...>, ArgList<Args2...>>::value;
 
 template <size_t N, class ArgL, class = void>
 struct TailN;
@@ -54,7 +47,7 @@ struct RemovePrefixWeak<ArgList<>, ArgList<Args2...>> {
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct RemovePrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>> {
-  static_assert(IsPrefixWeakV<ArgList<F1, Os1...>, ArgList<F2, Os2...>>,
+  static_assert(IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>::value,
                 "template argument 1 is not the weak prefix of template argument 2");
   using type = typename RemovePrefixWeak<ArgList<Os1...>, ArgList<Os2...>>::type;
 };
@@ -184,7 +177,7 @@ template <size_t... I, class... Tps>
 auto RemoveIndices(ArgList<Component<I, Tps>...>) -> ArgList<Tps...>;
 
 template <class Arg>
-using RemoveIndicesV = decltype(RemoveIndices(std::declval<Arg>()));
+using RemoveIndicesT = decltype(RemoveIndices(std::declval<Arg>()));
 
 // For sort testing
 
@@ -214,7 +207,7 @@ struct SortUniqueFillPlaceHoldersCorrespondTypes;
 
 template <class... Tps, size_t... I>
 struct SortUniqueFillPlaceHoldersCorrespondTypes<ArgList<Tps...>, ArgList<placeholders::PH<I>...>> {
-  using type = sort::RemoveIndicesV<
+  using type = sort::RemoveIndicesT<
       sort::FillFromZeroT<sort::UniqueT<sort::SortT<ArgList<Tps...>, ArgList<placeholders::PH<I>...>>>>>;
 };
 
@@ -242,7 +235,7 @@ struct ReplacePlaceHoldersWithGettersImpl<ArgList<>, Tuple> {
 
 template <class Prefix, class ArgL>
 struct ReplacePlaceHoldersWithGetters {
-  static_assert(IsPrefixWeakV<Prefix, ArgL>, "template argument 1 is not the weak prefix of template argument 2");
+  static_assert(IsPrefixWeak<Prefix, ArgL>::value, "template argument 1 is not the weak prefix of template argument 2");
 
  private:
   using ph_args = GetPlaceHoldersCorrespondTypesT<Prefix, ArgL>;

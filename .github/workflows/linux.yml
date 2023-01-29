@@ -11,22 +11,42 @@ env:
   BUILD_TYPE: Release
 
 jobs:
+  linux_cpp11:
+    runs-on: ubuntu-latest
+    compiler: gcc
+    gcc: 4
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Configure CMake
+        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+
+      - name: Build
+        run: cd build && make
+
+      - name: Test
+        run: cd build && ./closure_test
+
   linux_cpp14:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: recursive
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
 
-    - name: Configure CMake
-      run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+      - name: Configure CMake
+        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
 
-    - name: Build
-      run: cd build && make
+      - name: Build
+        run: cd build && make
 
-    - name: Test
-      run: cd build && ./closure_test
+      - name: Test
+        run: cd build && ./closure_test
+
   linux_cpp17:
     runs-on: ubuntu-latest
 
