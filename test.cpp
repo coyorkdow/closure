@@ -286,6 +286,13 @@ int calculate_sum(const std::string& exp) {
 
 void test_ref(int& v) { v++; }
 
+TEST(TestClosure, StaticLint) {
+  using validator = __closure::Validator<int (*)(std::unique_ptr<int, std::default_delete<int>>), closure::ArgList<>,
+                                         closure::ArgList<std::unique_ptr<int, std::default_delete<int>>>>;
+  static_assert(!validator::is_invokable, "");
+  static_assert(std::is_same<validator::invoke_result, typename validator::ErrType>::value, "");
+}
+
 TEST(TestClosure, FunctionPointer) {
   auto closure1 = MakeClosure(sum, 1);
   static_assert(__CLOSTD::is_same_v<decltype(closure1), Closure<std::size_t(double, int, int)>>, "");
@@ -328,6 +335,11 @@ TEST(TestClosureWithPlaceHolders, FunctionPointer) {
   static_assert(
       __CLOSTD::is_same_v<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>, "");
   EXPECT_EQ(closure2("ignored", 1, 2, 3, 4), 10);
+  closure1 = sum;
+  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
+  auto closure3 = MakeClosure(forwarding_test, closure::PlaceHolder<1>());
+  auto ptr = std::make_unique<int>(5);
+  EXPECT_EQ(closure3(nullptr, std::move(ptr)), 5);
 }
 
 TEST(TestClosure, Functor) {

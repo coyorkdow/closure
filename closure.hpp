@@ -45,7 +45,10 @@ class Validator;
 
 template <class Callable, class... Args, class... StoredArgs>
 class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
-  using agents_type = typename placeholders::HasGetter<ArgList<StoredArgs...>>::agents_type;
+ public:
+  struct ErrType;
+
+ private:
   /*
    * A gcc bug makes full template specialization in the class scope cannot be compiled. Use function overload
    * instead.
@@ -60,14 +63,15 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
   template <class... RealArgs>
   static auto TryInvoke(ArgList<RealArgs...>, int)  // stored args are passed by lvalue
       -> __CLOSTD::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
-  static auto TryInvoke(...) -> std::false_type;
+  static auto TryInvoke(...) -> ErrType;
 
   template <class Tp>
   static auto Invokable(Tp) -> std::true_type;
-  static auto Invokable(std::false_type) -> std::false_type;
+  static auto Invokable(ErrType*) -> std::false_type;
 
  public:
-  using invoke_result = decltype(TryInvoke(GetRealArgs<agents_type>(), 0));
+  using maybe_has_placeholder = placeholders::HasGetter<ArgList<StoredArgs...>>;
+  using invoke_result = decltype(TryInvoke(GetRealArgs<typename maybe_has_placeholder::agents_type>(0), 0));
   // invoke_result might be void, std::declval<void>() is invalid, use pointer type instead.
   static constexpr bool is_invokable = decltype(Invokable(std::declval<invoke_result*>()))::value;
 };
@@ -95,7 +99,7 @@ class ClosureImpl<
   using is_copyable = std::integral_constant<bool, __CLOSTD::is_copy_constructible_v<Callable> &&
                                                        __CLOSTD::is_copy_constructible_v<std::tuple<StoredArgs...>>>;
 
-  using maybe_has_placeholder = placeholders::HasGetter<ArgList<StoredArgs...>>;
+  using maybe_has_placeholder = typename validator::maybe_has_placeholder;
   using agents_type = typename maybe_has_placeholder::agents_type;
   static_assert(maybe_has_placeholder::value || __CLOSTD::is_same_v<agents_type, void>,
                 "agents type is not void when closure doesn't have placeholder");
