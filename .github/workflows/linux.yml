@@ -20,19 +20,11 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: egor-tensin/setup-gcc@v1
-        with:
-          version: 4.8
-          platform: x64
-
       - name: Build
         run: |
           mkdir build && cd build
           cmake -DCMAKE_CXX_STANDARD=11 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
           cmake --build .
-        env:
-          CC: gcc-4
-          CXX: g++-4
 
       - name: Test
         run: cd build && ./closure_test
