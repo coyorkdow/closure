@@ -22,16 +22,7 @@ set(install_gmock OFF)
 set(build_gmock ON)
 
 add_subdirectory(./googletest)
-
-add_executable(closure_test
-        closure.hpp
-        closure/traits.hpp
-        closure/placeholders.hpp
-        closure/util.hpp
-        closure/bind.hpp
-        test.cpp)
-
-target_compile_options(closure_test PUBLIC -g)
+add_subdirectory(./test)
 
 target_link_libraries(closure_test gmock gtest gtest_main)
 
