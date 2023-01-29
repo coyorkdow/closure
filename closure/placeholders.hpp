@@ -122,8 +122,8 @@ class Getter {
 template <class>
 struct IsGetter : std::false_type {};
 
-template <class Tuple, size_t I>
-struct IsGetter<Getter<Tuple, I>> : std::true_type {};
+template <class AgentsTuple, size_t I>
+struct IsGetter<Getter<AgentsTuple, I>> : std::true_type {};
 
 template <class AgentsTuple>
 struct AgentsType {

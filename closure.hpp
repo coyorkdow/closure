@@ -55,6 +55,16 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
    * Related bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85282
    */
 
+  template <class Tp>
+  struct RealInvokeArg {
+    using type = Tp&;
+  };
+
+  template <class AgentsTuple, size_t I>
+  struct RealInvokeArg<placeholders::Getter<AgentsTuple, I>> {
+    using type = typename placeholders::Getter<AgentsTuple, I>::result_type;
+  };
+
   template <class Agents>
   static auto GetRealArgs(int) -> typename __closure::TailN<std::tuple_size<Agents>::value, ArgList<Args...>>::type;
   template <class Agent>
@@ -62,7 +72,7 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
 
   template <class... RealArgs>
   static auto TryInvoke(ArgList<RealArgs...>, int)  // stored args are passed by lvalue
-      -> traits::invoke_result_t<Callable, std::add_lvalue_reference_t<StoredArgs>..., RealArgs...>;
+      -> traits::invoke_result_t<Callable, typename RealInvokeArg<StoredArgs>::type..., RealArgs...>;
   static auto TryInvoke(...) -> ErrType;
 
   template <class Tp>
@@ -72,6 +82,7 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
  public:
   using maybe_has_placeholder = placeholders::HasGetter<ArgList<StoredArgs...>>;
   using agents_type = typename maybe_has_placeholder::agents_type;
+  using real_args = decltype(GetRealArgs<agents_type>(0));
   using invoke_result = decltype(TryInvoke(GetRealArgs<agents_type>(0), 0));
   // invoke_result might be void, std::declval<void>() is invalid, use pointer type instead.
   static constexpr bool is_invokable = decltype(Invokable(std::declval<invoke_result*>()))::value;
