@@ -367,6 +367,7 @@ TEST(TestClosureWithPlaceHolders, Functor) {
   EXPECT_EQ(closure2(7, 3), 2);
 
   auto lambda2 = [](const std::string&, const char*) {};
+  (void) lambda2;
   //    auto closure3 = MakeClosure(lambda2, PlaceHolder<0>(), PlaceHolder<0>()); cannot initialize such closure
   auto lambda3 = [](const char* v1, const std::string& v2) -> std::string { return v1 + v2; };
   auto closure3 = MakeClosure(lambda3, PlaceHolder<0>(), PlaceHolder<0>());
