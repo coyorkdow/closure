@@ -231,7 +231,10 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters1) {
   static_assert(std::is_same<result, ArgList<Getter<agents_type, 3>, Getter<agents_type, 2>, std::string,
                                              Getter<agents_type, 0>, char, Getter<agents_type, 5>>>::value,
                 "");
-  static_assert(std::is_same<agents_type, MakeAgentsT<PlaceHoldersAgentsPrototypeT<binds, args>>>::value, "");
+  static_assert(
+      std::is_same<agents_type,
+                   MakeAgentsT<typename ReplacePlaceHoldersWithGetters<binds, args>::agents_prototype>>::value,
+      "");
 }
 
 TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
@@ -246,7 +249,10 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
   static_assert(std::is_same<result, ArgList<Getter<agents_type, 3>, Getter<agents_type, 2>, std::string,
                                              Getter<agents_type, 2>, char, float, Getter<agents_type, 5>>>::value,
                 "");
-  static_assert(std::is_same<agents_type, MakeAgentsT<PlaceHoldersAgentsPrototypeT<binds, args>>>::value, "");
+  static_assert(
+      std::is_same<agents_type,
+                   MakeAgentsT<typename ReplacePlaceHoldersWithGetters<binds, args>::agents_prototype>>::value,
+      "");
 }
 
 TEST(TestAnyType, Any) {
@@ -341,6 +347,31 @@ TEST(TestClosureWithPlaceHolders, FunctionPointer) {
   auto closure3 = MakeClosure(forwarding_test, closure::PlaceHolder<1>());
   auto ptr = std::make_unique<int>(5);
   EXPECT_EQ(closure3(nullptr, std::move(ptr)), 5);
+
+  Closure<int(int, std::unique_ptr<int>)> closure4(forwarding_test, PlaceHolder<1>());
+  EXPECT_EQ(closure4(1, std::make_unique<int>(1)), 1);
+  closure4 = closure3;
+  EXPECT_EQ(closure4(2, std::make_unique<int>(1)), 1);
+}
+
+TEST(TestClosureWithPlaceHolders, Functor) {
+  std::string unused = "12345";
+  auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
+  auto closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
+  EXPECT_EQ(closure1(5, 3), -2);
+  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);
+  EXPECT_EQ(closure1(4, 1), 0);
+  Closure<int64_t(int, int)> closure2(lambda1, PlaceHolder<1>(), PlaceHolder<0>());
+  EXPECT_EQ(closure2(3, 4), 1);
+  closure2 = closure1;
+  EXPECT_EQ(closure2(7, 3), 2);
+
+  auto lambda2 = [](const std::string&, const char*) {};
+  (void) lambda2;
+  //    auto closure3 = MakeClosure(lambda2, PlaceHolder<0>(), PlaceHolder<0>()); cannot initialize such closure
+  auto lambda3 = [](const char* v1, const std::string& v2) -> std::string { return v1 + v2; };
+  auto closure3 = MakeClosure(lambda3, PlaceHolder<0>(), PlaceHolder<0>());
+  EXPECT_EQ(closure3("123"), "123123");
 }
 
 TEST(TestClosure, Functor) {

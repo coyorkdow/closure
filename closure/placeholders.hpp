@@ -93,7 +93,7 @@ struct IsAgent<Agent<Tp>> : std::true_type {};
 
 template <class AgentsTuple, size_t... I, size_t... J, class... Args, class Callback, class... CallbackArgs>
 decltype(auto) MakeAgentsTupleAndApply(std::index_sequence<I...>, std::index_sequence<J...>, std::tuple<Args...>&& args,
-                                       Callback&& callback, CallbackArgs&&... callback_args) noexcept {
+                                       Callback&& callback, CallbackArgs&&... callback_args) {
   return callback(std::forward<CallbackArgs>(callback_args)...,
                   AgentsTuple{std::get<I>(std::forward<decltype(args)>(args))...},
                   std::get<sizeof...(I) + J>(std::forward<decltype(args)>(args))...);
@@ -122,8 +122,8 @@ class Getter {
 template <class>
 struct IsGetter : std::false_type {};
 
-template <class Tuple, size_t I>
-struct IsGetter<Getter<Tuple, I>> : std::true_type {};
+template <class AgentsTuple, size_t I>
+struct IsGetter<Getter<AgentsTuple, I>> : std::true_type {};
 
 template <class AgentsTuple>
 struct AgentsType {
