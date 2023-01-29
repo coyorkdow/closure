@@ -32,6 +32,19 @@ struct TailN<0, ArgList<Args...>> {
   using type = ArgList<Args...>;
 };
 
+template <size_t N, class ArgL, class = void>
+struct HeadN;
+
+template <size_t N, class F, class... Os>
+struct HeadN<N, ArgList<F, Os...>, std::enable_if_t<0 < N>> {
+  using type = ConcatT<ArgList<F>, typename HeadN<N - 1, ArgList<Os...>>::type>;
+};
+
+template <class... Args>
+struct HeadN<0, ArgList<Args...>> {
+  using type = ArgList<>;
+};
+
 template <class Prefix, class ArgL>
 struct RemovePrefixWeak;
 
@@ -77,6 +90,21 @@ template <class Prefix, class ArgL>
 using GetPlaceHoldersCorrespondTypesT = typename GetPlaceHoldersCorrespondTypes<Prefix, ArgL>::type;
 
 namespace sort {
+
+template <class PHs, size_t I>
+struct Max;
+
+template <size_t F, class... Os, size_t I>
+struct Max<ArgList<placeholders::PH<F>, Os...>, I> : Max<ArgList<Os...>, (I < F ? F : I)> {};
+
+template <size_t I>
+struct Max<ArgList<>, I> : std::integral_constant<size_t, I> {};
+
+template <class PHs>
+struct MaxPlaceHolders;
+
+template <size_t F, class... Os>
+struct MaxPlaceHolders<ArgList<placeholders::PH<F>, Os...>> : Max<ArgList<Os...>, F> {};
 
 enum class Cond { Unchecked, False, True };
 
@@ -250,7 +278,18 @@ template <class Prefix, class ArgL>
 using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::type;
 
 template <class Prefix, class ArgL>
-using PlaceHoldersAgentsPrototypeT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::agents_prototype;
+struct GenerateGettersFromClosureArgs {
+ private:
+  using phl = placeholders::FilterPlaceHolderT<Prefix>;
+  static constexpr auto max = sort::MaxPlaceHolders<phl>::value;
+
+ public:
+  using agents_prototype = typename HeadN<max + 1, ArgL>::type;
+  using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<agents_prototype>>::type;
+};
+
+template <class Prefix, class ArgL>
+using GenerateGettersFromClosureArgsT = typename GenerateGettersFromClosureArgs<Prefix, ArgL>::type;
 
 }  // namespace __closure
 
