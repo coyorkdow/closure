@@ -91,9 +91,9 @@ struct IsAgent : std::false_type {};
 template <class Tp>
 struct IsAgent<Agent<Tp>> : std::true_type {};
 
-template <class R, class AgentsTuple, size_t... I, size_t... J, class... Args, class Callback, class... CallbackArgs>
-R MakeAgentsTupleAndApply(std::index_sequence<I...>, std::index_sequence<J...>, std::tuple<Args...>&& args,
-                          Callback&& callback, CallbackArgs&&... callback_args) noexcept {
+template <class AgentsTuple, size_t... I, size_t... J, class... Args, class Callback, class... CallbackArgs>
+decltype(auto) MakeAgentsTupleAndApply(std::index_sequence<I...>, std::index_sequence<J...>, std::tuple<Args...>&& args,
+                                       Callback&& callback, CallbackArgs&&... callback_args) noexcept {
   return callback(std::forward<CallbackArgs>(callback_args)...,
                   AgentsTuple{std::get<I>(std::forward<decltype(args)>(args))...},
                   std::get<sizeof...(I) + J>(std::forward<decltype(args)>(args))...);
@@ -141,14 +141,13 @@ struct HasGetter<ArgList<F, Os...>> : HasGetter<ArgList<Os...>> {};
 
 template <size_t I, class Tuple, class Agents,
           std::enable_if_t<IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
-auto TryMapAndGet(Tuple&& tuple, Agents&& agents) noexcept
-    -> decltype(std::get<I>(std::declval<Tuple>()).Get(std::declval<Agents&>())) {
+decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&& agents) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple)).Get(agents);
 }
 
 template <size_t I, class Tuple, class Agents,
           std::enable_if_t<!IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
-auto TryMapAndGet(Tuple&& tuple, Agents&&) noexcept -> decltype(std::get<I>(std::declval<Tuple>())) {
+decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&&) noexcept {
   return std::get<I>(std::forward<Tuple>(tuple));
 }
 

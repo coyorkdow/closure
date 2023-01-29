@@ -171,9 +171,6 @@ auto IsFunctorImpl(...) -> std::false_type;
 template <class Tp>
 struct IsFunctor : decltype(IsFunctorImpl<Tp>(0)) {};
 
-template <class Tp>
-constexpr auto IsFunctorV = IsFunctor<Tp>::value;
-
 }  // namespace traits
 
 }  // namespace closure

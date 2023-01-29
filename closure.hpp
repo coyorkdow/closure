@@ -141,7 +141,7 @@ class ClosureImpl<
     static_assert(sizeof...(Args) >= std::tuple_size<agents_type>::value,
                   "the number of the given arguments is less than the agents size");
     constexpr auto agents_size = std::tuple_size<agents_type>::value;
-    return placeholders::MakeAgentsTupleAndApply<typename base::result_type, agents_type>(
+    return placeholders::MakeAgentsTupleAndApply<agents_type>(
         std::make_index_sequence<agents_size>{}, std::make_index_sequence<sizeof...(Args) - agents_size>{},
         std::forward_as_tuple(std::forward<Args>(args)...), MapAndRun{}, seq, this);
   }
