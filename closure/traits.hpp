@@ -8,44 +8,12 @@
 
 #include "closure/util.hpp"
 
-#ifdef __CLOSTD
-#error "Macro __CLOSTD is already defined"
-#endif
-
 namespace closure {
 #if __cplusplus < 201703L
-#define __CLOSTD __clostd
-
-namespace __clostd {
-template <class Tuple>
-constexpr auto tuple_size_v = std::tuple_size<Tuple>::value;
-
-template <class From, class To>
-constexpr bool is_convertible_v = std::is_convertible<From, To>::value;
-
-template <class Tp1, class Tp2>
-constexpr bool is_same_v = std::is_same<Tp1, Tp2>::value;
-
-template <class Tp>
-constexpr bool is_const_v = std::is_const<Tp>::value;
-
-template <class Tp>
-constexpr bool is_pointer_v = std::is_pointer<Tp>::value;
-
-template <class Tp>
-constexpr bool is_reference_v = std::is_reference<Tp>::value;
+namespace traits {
 
 template <class...>
 using void_t = void;
-
-template <class Tp>
-constexpr bool is_function_v = std::is_function<Tp>::value;
-
-template <class Tp>
-constexpr bool is_member_function_pointer_v = std::is_member_function_pointer<Tp>::value;
-
-template <class Tp>
-constexpr bool is_copy_constructible_v = std::is_copy_constructible<Tp>::value;
 
 // Implementing invoke_result, source https://en.cppreference.com/w/cpp/types/result_of
 namespace detail {
@@ -104,21 +72,23 @@ struct invoke_result : detail::invoke_result<void, F, ArgTypes...> {};
 template <class F, class... ArgTypes>
 using invoke_result_t = typename invoke_result<F, ArgTypes...>::type;
 
-// End of implementing invoke_result
-
-}  // namespace __clostd
+}  // namespace traits
 #else
-#define __CLOSTD std
+namespace traits {
+using std::invoke_result;
+using std::invoke_result_t;
+using std::void_t;
+}  // namespace traits
 #endif
 
 namespace traits {
 
-template <class Tp, __CLOSTD::void_t<decltype(&Tp::operator->), decltype(&Tp::operator*)>* = nullptr>
+template <class Tp, void_t<decltype(&Tp::operator->), decltype(&Tp::operator*)>* = nullptr>
 auto IsDereferencableImpl(int) -> std::integral_constant<
-    bool, __CLOSTD::is_pointer_v<decltype(std::declval<Tp>().operator->())> &&
-              __CLOSTD::is_reference_v<decltype(std::declval<Tp>().operator*())> &&
-              __CLOSTD::is_same_v<std::remove_pointer_t<decltype(std::declval<Tp>().operator->())>,
-                                  std::remove_reference_t<decltype(std::declval<Tp>().operator*())>>>;
+    bool, std::is_pointer<decltype(std::declval<Tp>().operator->())>::value &&
+              std::is_reference<decltype(std::declval<Tp>().operator*())>::value &&
+              std::is_same<std::remove_pointer_t<decltype(std::declval<Tp>().operator->())>,
+                           std::remove_reference_t<decltype(std::declval<Tp>().operator*())>>::value>;
 
 template <class Tp>
 auto IsDereferencableImpl(...) -> std::is_pointer<Tp>;
@@ -131,9 +101,6 @@ auto TryCallMethod(int, Dereferencable&&, Method&&, Args&&...)
     -> decltype(((*std::declval<Dereferencable>()).*std::declval<Method>())(std::declval<Args>()...), std::true_type{});
 
 auto TryCallMethod(float, ...) -> std::false_type;
-
-template <class Ptr>
-constexpr auto IsDereferencableV = IsDereferencable<Ptr>::value;
 
 template <class Dereferencable, class Method>
 struct CanUsePointerToMemberFunction : std::false_type {};
@@ -159,9 +126,6 @@ struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const
     : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const noexcept>(),
                              std::declval<Args>()...)) {};
 #endif
-
-template <class Dereferencable, class R>
-constexpr auto CanUsePointerToMemberFunctionV = CanUsePointerToMemberFunction<Dereferencable, R>::value;
 
 template <class Op>
 struct FunctorTraitsImpl {};
@@ -192,8 +156,11 @@ struct FunctorTraitsImpl<R (Class::*)(Args...) const noexcept> {
 };
 #endif
 
-template <class F, class Op = decltype(&F::operator())>
-struct FunctorTraits : FunctorTraitsImpl<Op> {};
+template <class F, class = void>
+struct FunctorTraits;
+
+template <class F>
+struct FunctorTraits<F, decltype((void)&F::operator())> : FunctorTraitsImpl<decltype(&F::operator())> {};
 
 template <class Tp>
 auto IsFunctorImpl(int) -> decltype(FunctorTraits<Tp>{}, std::true_type{});
@@ -203,9 +170,6 @@ auto IsFunctorImpl(...) -> std::false_type;
 
 template <class Tp>
 struct IsFunctor : decltype(IsFunctorImpl<Tp>(0)) {};
-
-template <class Tp>
-constexpr auto IsFunctorV = IsFunctor<Tp>::value;
 
 }  // namespace traits
 

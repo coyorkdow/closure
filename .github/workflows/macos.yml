@@ -1,6 +1,7 @@
 name: macOS
 
 on:
+  workflow_dispatch: # for manual workflow trigger
   push:
     branches: [ "main" ]
   pull_request:
@@ -15,18 +16,19 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: recursive
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
 
-    - name: Configure CMake
-      run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
-    - name: Build
-      run: cd build && make
+      - name: Test
+        run: cd build && ./closure_test
 
-    - name: Test
-      run: cd build && ./closure_test
   macOS_cpp17:
     runs-on: macos-latest
 
@@ -35,11 +37,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configure CMake
-        run: mkdir build && cd build && cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
-
       - name: Build
-        run: cd build && make
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Werror" ..
+          cmake --build . 
 
       - name: Test
         run: cd build && ./closure_test
