@@ -20,10 +20,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Prepare
-        run: |
-          sudo apt update
-          sudo apt install gcc-4 g++-4
+      - uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 4.8
+          platform: x64
 
       - name: Build
         run: |
