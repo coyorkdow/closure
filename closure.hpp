@@ -237,17 +237,20 @@ class Closure<R(Args...)> {
 
   Closure() = default;
 
-  template <class... FuncArgs, class... Bounds>
-  explicit Closure(R (*func)(FuncArgs...), Bounds&&... bound_args)
+  template <class FP, class... Bounds, std::enable_if_t<!std::is_pointer<FP>::value, int> = 0>
+  explicit Closure(FP* func, Bounds&&... bound_args)
       : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, func, std::forward<Bounds>(bound_args)...)) {}
 
-  template <class... FuncArgs>
-  Closure& operator=(R (*func)(FuncArgs...)) {
+  template <class FP, std::enable_if_t<!std::is_pointer<FP>::value, int> = 0>
+  Closure& operator=(FP* func) {
     pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, func));
     return *this;
   }
 
-  template <class Functor, class... Bounds>
+  template <class Functor, class... Bounds,
+            std::enable_if_t<!std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
+                                 !std::is_pointer<std::remove_reference_t<Functor>>::value,
+                             int> = 0>
   explicit Closure(Functor&& functor, Bounds&&... bound_args)
       : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor),
                                              std::forward<Bounds>(bound_args)...)) {
@@ -256,7 +259,11 @@ class Closure<R(Args...)> {
 
   // We have to add a SFINAE argument to avoid hiding the copy assignment operator. The parameter of the copy assignment
   // operator is const qualified, which may make the `Functor&&` prior to the `const Closure&`.
-  template <class Functor, class = std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value>>
+  template <class Functor,
+            std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
+                                 !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
+                                 !std::is_pointer<std::remove_reference_t<Functor>>::value,
+                             int> = 0>
   Closure& operator=(Functor&& functor) {
     pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor)));
     return *this;
