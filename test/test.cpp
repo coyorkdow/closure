@@ -343,6 +343,14 @@ TEST(TestClosureWithPlaceHolders, FunctionPointer) {
   EXPECT_EQ(closure3(nullptr, std::move(ptr)), 5);
 }
 
+TEST(TestClosureWithPlaceHolders, Functor) {
+  auto lambda1 = [](int v1, int v2) { return v1 - v2; };
+  auto closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
+  EXPECT_EQ(closure1(5, 3), -2);
+  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);
+  EXPECT_EQ(closure1(4, 1), 0);
+}
+
 TEST(TestClosure, Functor) {
   std::string exp = "11+12+13";
   auto wrap_sum = [=]() { return calculate_sum(exp); };
