@@ -250,14 +250,14 @@ class Closure<R(Args...)> {
   Closure() = default;
 
   template <class FP, class... Bounds,
-            std::enable_if_t<!std::is_pointer<FP>::value && !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
+            std::enable_if_t<std::is_function<FP>::value && !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
   explicit Closure(FP* func, Bounds&&... bound_args)
       : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, func, std::forward<Bounds>(bound_args)...)) {}
 
   template <
       class FP, class... Bounds,
-      std::enable_if_t<!std::is_pointer<FP>::value && placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
+      std::enable_if_t<std::is_function<FP>::value && placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
   explicit Closure(FP* func, Bounds&&... bound_args) {
     using bounds_l = ArgList<Bounds...>;
     using replaced_types = __closure::GenerateGettersFromClosureArgsT<bounds_l, args_type>;
@@ -265,7 +265,7 @@ class Closure<R(Args...)> {
         __closure::MakeClosureImpl<R>(args_type{}, replaced_types{}, func, std::forward<Bounds>(bound_args)...));
   }
 
-  template <class FP, std::enable_if_t<!std::is_pointer<FP>::value, int> = 0>
+  template <class FP, std::enable_if_t<std::is_function<FP>::value, int> = 0>
   Closure& operator=(FP* func) {
     pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, func));
     return *this;
@@ -274,7 +274,7 @@ class Closure<R(Args...)> {
   template <class Functor, class... Bounds,
             std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
                                  !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_pointer<std::remove_reference_t<Functor>>::value &&
+                                 !std::is_function<std::remove_reference_t<Functor>>::value &&
                                  !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
   explicit Closure(Functor&& functor, Bounds&&... bound_args)
@@ -284,7 +284,7 @@ class Closure<R(Args...)> {
   template <class Functor, class... Bounds,
             std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
                                  !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_pointer<std::remove_reference_t<Functor>>::value &&
+                                 !std::is_function<std::remove_reference_t<Functor>>::value &&
                                  placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
   explicit Closure(Functor&& functor, Bounds&&... bound_args) {
@@ -297,7 +297,7 @@ class Closure<R(Args...)> {
   template <class Functor,
             std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
                                  !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_pointer<std::remove_reference_t<Functor>>::value,
+                                 !std::is_function<std::remove_reference_t<Functor>>::value,
                              int> = 0>
   Closure& operator=(Functor&& functor) {
     pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor)));
