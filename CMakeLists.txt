@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.9)
 project(closure_test)
 
 if (NOT DEFINED CMAKE_CXX_STANDARD)
@@ -11,7 +11,6 @@ else ()
     endif ()
 endif ()
 
-
 include_directories(.)
 
 add_compile_options(-Wall)
@@ -22,7 +21,20 @@ set(install_gmock OFF)
 set(build_gmock ON)
 
 add_subdirectory(./googletest)
-add_subdirectory(./test)
+
+list(APPEND closure_src
+        closure.hpp
+        closure/traits.hpp
+        closure/placeholders.hpp
+        closure/util.hpp
+        closure/bind.hpp
+        )
+
+add_executable(closure_test
+        ${closure_src}
+        test/test.cpp)
+
+target_compile_options(closure_test PUBLIC -g)
 
 target_link_libraries(closure_test gmock gtest gtest_main)
 

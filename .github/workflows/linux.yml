@@ -27,7 +27,7 @@ jobs:
           cmake --build .
 
       - name: Test
-        run: cd build/test && ./closure_test
+        run: cd build && ./closure_test
 
   linux_cpp17:
     runs-on: ubuntu-latest
@@ -44,4 +44,4 @@ jobs:
           cmake --build .
 
       - name: Test
-        run: cd build/test && ./closure_test
+        run: cd build && ./closure_test
