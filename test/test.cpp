@@ -305,7 +305,7 @@ TEST(TestValidator, InvokeFunctionPointer) {
 TEST(TestValidator, InvokeMemberFunction) {
   struct C {
     int foo(int, int) { return 0; }
-  } c;
+  };
   using m1 = int (C::*)(int, int);
   using _ = traits::invoke_result_t<m1, C*, int, int>;
   static_assert(std::is_same<_, int>::value, "");
