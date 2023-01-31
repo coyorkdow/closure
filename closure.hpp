@@ -40,11 +40,11 @@ class ClosureImplBase<R(Args...)> {
 template <class ClosureArg, class Callee, class CalleeArgsList, class = void>
 class ClosureImpl;
 
-template <class Callable, class Args, class StoredArgs>
+template <class Callable, class StoredArgs, class Args>
 class Validator;
 
 template <class Callable, class... Args, class... StoredArgs>
-class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
+class Validator<Callable, ArgList<StoredArgs...>, ArgList<Args...>> {
  public:
   struct ErrType;
 
@@ -84,7 +84,7 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
   using agents_type = typename maybe_has_placeholder::agents_type;
   using real_args = decltype(GetRealArgs<agents_type>(0));
   using invoke_result = decltype(TryInvoke(GetRealArgs<agents_type>(0), 0));
-  // invoke_result might be void, std::declval<void>() is invalid, use pointer type instead.
+  // invoke_result might be void, std::declval<void>() is invalid as an argument, use pointer type instead.
   static constexpr bool is_invokable = decltype(Invokable(std::declval<invoke_result*>()))::value;
 };
 
@@ -92,12 +92,12 @@ class Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>> {
 // It is guaranteed that the Callable and all the StoredArgs... are non-reference types.
 // If it has placeholders, all placeholders must have been already replaced with getters.
 template <class R, class... Args, class Callable, class... StoredArgs>
-class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
-                  std::enable_if_t<!std::is_member_function_pointer<Callable>::value>>
-    : public ClosureImplBase<R(Args...)>, private std::tuple<StoredArgs...> {
+class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>/*,
+                  std::enable_if_t<!std::is_member_function_pointer<Callable>::value>*/>
+    : public ClosureImplBase<R(Args...)>, private decltype(std::make_tuple(std::declval<StoredArgs>()...)) {
   using base = ClosureImplBase<R(Args...)>;
 
-  using validator = Validator<Callable, ArgList<Args...>, ArgList<StoredArgs...>>;
+  using validator = Validator<Callable, ArgList<StoredArgs...>, ArgList<Args...>>;
   static_assert(validator::is_invokable, "the given arguments don't match the arguments of callee");
   static_assert(!validator::is_invokable ||
                     std::is_convertible<typename validator::invoke_result, typename base::result_type>::value,
@@ -105,7 +105,7 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
 
  public:
   using callee_type = Callable;
-  using stored_types = std::tuple<StoredArgs...>;
+  using stored_types = decltype(std::make_tuple(std::declval<StoredArgs>()...)); /*std::tuple<StoredArgs...>*/
 
   using is_copyable = std::integral_constant<bool, std::is_copy_constructible<Callable>::value &&
                                                        std::is_copy_constructible<std::tuple<StoredArgs...>>::value>;
@@ -140,9 +140,10 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
   struct MapAndRun {
     template <size_t... I, class... RestArgs>
     typename base::result_type operator()(std::index_sequence<I...>, ClosureImpl* this_ptr, agents_type&& agents,
-                                          RestArgs&&... args) {
-      return this_ptr->callable_(placeholders::TryMapAndGet<I>(static_cast<stored_types&>(*this_ptr), agents)...,
-                                 std::forward<RestArgs>(args)...);
+                                          RestArgs&&... args) const {
+      return invoke::INVOKE(this_ptr->callable_,
+                            placeholders::TryMapAndGet<I>(static_cast<stored_types&>(*this_ptr), agents)...,
+                            std::forward<RestArgs>(args)...);
     }
   };
 
@@ -159,79 +160,29 @@ class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>,
 
   template <class MaybeHasPlaceHolder, std::enable_if_t<!MaybeHasPlaceHolder::value, int> = 0, std::size_t... I>
   typename base::result_type RunHelper(std::index_sequence<I...>, Args&&... args) {
-    return callable_(std::get<I>(static_cast<stored_types&>(*this))..., std::forward<Args>(args)...);
+    return invoke::INVOKE(callable_, std::get<I>(static_cast<stored_types&>(*this))..., std::forward<Args>(args)...);
   }
 
   callee_type callable_;
 };
 
-// TODO Overload for class method
-// It is guaranteed that Method, the CPtr, and all the StoredArgs... are non-reference types.
-template <class R, class... Args, class Method, class CPtr, class... StoredArgs>
-class ClosureImpl<
-    R(Args...), Method, ArgList<CPtr, StoredArgs...>,
-    std::enable_if_t<std::is_member_function_pointer<Method>::value && traits::IsDereferencable<CPtr>::value &&
-                     traits::CanUsePointerToMemberFunction<CPtr, Method>::value>>
-    : public ClosureImplBase<R(Args...)>, private std::tuple<CPtr, StoredArgs...> {
-  using base = ClosureImplBase<R(Args...)>;
-
-  static_assert(traits::CanUsePointerToMemberFunction<CPtr, Method>::value, "");
-
- public:
-  using callee_type = Method;
-  using stored_types = std::tuple<CPtr, StoredArgs...>;
-
-  template <class CArg, class... BoundArgs,
-            std::enable_if_t<!placeholders::HasPlaceHolder<ArgList<std::decay_t<BoundArgs>...>>::value, int> = 0>
-  explicit ClosureImpl(callee_type f, CArg&& carg, BoundArgs&&... args)
-      : stored_types(std::forward<CArg>(carg), std::forward<BoundArgs>(args)...), callable_(f) {}
-
-  typename base::result_type Run(Args&&... args) override {
-    return RunHelper(std::index_sequence_for<StoredArgs...>{}, std::forward<Args>(args)...);
-  }
-
- private:
-  template <std::size_t... I>
-  typename base::result_type RunHelper(std::index_sequence<I...>, Args&&... args) {
-    auto& stored_list = static_cast<stored_types&>(*this);
-    return ((*std::get<0>(stored_list)).*callable_)(std::get<I + 1>(stored_list)..., std::forward<Args>(args)...);
-  }
-
- private:
-  callee_type callable_;
-};
-
-// Overload for callable type
+// Overload for non placeholders
 template <class R, class... ClosureArgs, class Callable, class... Bounds,
-          std::enable_if_t<!std::is_member_function_pointer<Callable>::value &&
-                               !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                           int> = 0>
+          std::enable_if_t<!placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
 auto MakeClosureImpl(ArgList<ClosureArgs...>, Callable&& callable, Bounds&&... bound_args) {
   return new ClosureImpl<R(ClosureArgs...), std::remove_reference_t<Callable>,
                          ArgList<std::remove_reference_t<Bounds>...>>(std::forward<Callable>(callable),
                                                                       std::forward<Bounds>(bound_args)...);
 }
 
+// Overload for placeholders
 template <class R, class... ClosureArgs, class... ConvertedBounds, class Callable, class... Bounds,
-          std::enable_if_t<!std::is_member_function_pointer<Callable>::value &&
-                               placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                           int> = 0>
+          std::enable_if_t<placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
 auto MakeClosureImpl(ArgList<ClosureArgs...>, ArgList<ConvertedBounds...>, Callable&& callable,
                      Bounds&&... bound_args) {
   return new ClosureImpl<R(ClosureArgs...), std::remove_reference_t<Callable>,
                          ArgList<std::remove_reference_t<ConvertedBounds>...>>(std::forward<Callable>(callable),
                                                                                std::forward<Bounds>(bound_args)...);
-}
-
-// Overload for class method
-template <class R, class... ClosureArgs, class Method, class CPtr, class... Bounds,
-          std::enable_if_t<std::is_member_function_pointer<Method>::value &&
-                               !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                           int> = 0>
-auto MakeClosureImpl(ArgList<ClosureArgs...>, Method method, CPtr&& cptr, Bounds&&... bound_args) {
-  return new ClosureImpl<R(ClosureArgs...), Method,
-                         ArgList<std::remove_reference_t<CPtr>, std::remove_reference_t<Bounds>...>>(
-      method, std::forward<CPtr>(cptr), std::forward<Bounds>(bound_args)...);
 }
 
 }  // namespace __closure
@@ -271,36 +222,32 @@ class Closure<R(Args...)> {
     return *this;
   }
 
-  template <class Functor, class... Bounds,
-            std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
-                                 !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_function<std::remove_reference_t<Functor>>::value &&
+  template <class Callable, class... Bounds,
+            std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
+                                 !std::is_function<std::remove_reference_t<Callable>>::value &&
                                  !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
-  explicit Closure(Functor&& functor, Bounds&&... bound_args)
-      : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor),
+  explicit Closure(Callable&& callable, Bounds&&... bound_args)
+      : pimpl_(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Callable>(callable),
                                              std::forward<Bounds>(bound_args)...)) {}
 
-  template <class Functor, class... Bounds,
-            std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
-                                 !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_function<std::remove_reference_t<Functor>>::value &&
+  template <class Callable, class... Bounds,
+            std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
+                                 !std::is_function<std::remove_reference_t<Callable>>::value &&
                                  placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
-  explicit Closure(Functor&& functor, Bounds&&... bound_args) {
+  explicit Closure(Callable&& callable, Bounds&&... bound_args) {
     using bounds_l = ArgList<Bounds...>;
     using replaced_types = __closure::GenerateGettersFromClosureArgsT<bounds_l, args_type>;
-    pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, replaced_types{}, std::forward<Functor>(functor),
+    pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, replaced_types{}, std::forward<Callable>(callable),
                                                std::forward<Bounds>(bound_args)...));
   }
 
-  template <class Functor,
-            std::enable_if_t<!std::is_same<std::decay_t<Functor>, Closure>::value &&
-                                 !std::is_member_function_pointer<std::remove_reference_t<Functor>>::value &&
-                                 !std::is_function<std::remove_reference_t<Functor>>::value,
-                             int> = 0>
-  Closure& operator=(Functor&& functor) {
-    pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Functor>(functor)));
+  template <class Callable, std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
+                                                 !std::is_function<std::remove_reference_t<Callable>>::value,
+                                             int> = 0>
+  Closure& operator=(Callable&& callable) {
+    pimpl_.reset(__closure::MakeClosureImpl<R>(args_type{}, std::forward<Callable>(callable)));
     return *this;
   }
 
@@ -356,13 +303,13 @@ auto MakeClosure(R (*func)(Args...), Bounds&&... bound_args) {
 // TODO noexcept had been a part of type system since c++17. make a specialization so that we can call noexcept function
 // in noexcept.
 
-// MakeClosure for functor
+// MakeClosure for simple functor
 template <class Functor, class... Bounds,
-          std::enable_if_t<traits::IsFunctor<std::remove_reference_t<Functor>>::value &&
+          std::enable_if_t<traits::IsSimpleFunctor<std::remove_reference_t<Functor>>::value &&
                                !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                            int> = 0>
 auto MakeClosure(Functor&& functor, Bounds&&... bound_args) {
-  using functor_traits = traits::FunctorTraits<std::remove_reference_t<Functor>>;
+  using functor_traits = traits::SimpleFunctorTraits<std::remove_reference_t<Functor>>;
   auto res = __closure::MakeClosureImpl<typename functor_traits::return_type>(
       typename functor_traits::args_type{}, std::forward<Functor>(functor), std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
@@ -370,11 +317,11 @@ auto MakeClosure(Functor&& functor, Bounds&&... bound_args) {
 }
 
 template <class Functor, class... Bounds,
-          std::enable_if_t<traits::IsFunctor<std::remove_reference_t<Functor>>::value &&
+          std::enable_if_t<traits::IsSimpleFunctor<std::remove_reference_t<Functor>>::value &&
                                placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                            int> = 0>
 auto MakeClosure(Functor&& functor, Bounds&&... bound_args) {
-  using functor_traits = traits::FunctorTraits<std::remove_reference_t<Functor>>;
+  using functor_traits = traits::SimpleFunctorTraits<std::remove_reference_t<Functor>>;
   using bounds_l = ArgList<Bounds...>;
   using args_l = typename functor_traits::args_type;
   using replaced_types = __closure::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
@@ -387,20 +334,36 @@ auto MakeClosure(Functor&& functor, Bounds&&... bound_args) {
 }
 
 // MakeClosure for member function pointer
-template <class R, class Class, class... Args, class CPtr, class... Bounds>
-auto MakeClosure(R (Class::*method)(Args...), CPtr&& cptr, Bounds&&... bound_args) {
-  using closure_args = __closure::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
-  auto res = __closure::MakeClosureImpl<R>(closure_args{}, method, std::forward<CPtr>(cptr),
-                                           std::forward<Bounds>(bound_args)...);
+template <class Method, class... Bounds,
+          std::enable_if_t<std::is_member_function_pointer<Method>::value &&
+                               !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
+                           int> = 0>
+auto MakeClosure(Method method, Bounds&&... bound_args) {
+  using mfp_traits = traits::MemberFunctionPointerTraits<Method>;
+  using class_type = typename mfp_traits::class_type;
+  using args_type = typename mfp_traits::args_type;
+  using return_type = typename mfp_traits::return_type;
+  using closure_args = __closure::RemovePrefixWeakT<ArgList<Bounds...>, ConcatT<ArgList<class_type*>, args_type>>;
+  auto res = __closure::MakeClosureImpl<return_type>(closure_args{}, method, std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }
 
-template <class R, class Class, class... Args, class CPtr, class... Bounds>
-auto MakeClosure(R (Class::*method)(Args...) const, CPtr&& cptr, Bounds&&... bound_args) {
-  using closure_args = __closure::RemovePrefixWeakT<ArgList<Bounds...>, ArgList<Args...>>;
-  auto res = __closure::MakeClosureImpl<R>(closure_args{}, method, std::forward<CPtr>(cptr),
-                                           std::forward<Bounds>(bound_args)...);
+template <class Method, class... Bounds,
+          std::enable_if_t<std::is_member_function_pointer<Method>::value &&
+                               placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
+                           int> = 0>
+auto MakeClosure(Method method, Bounds&&... bound_args) {
+  using mfp_traits = traits::MemberFunctionPointerTraits<Method>;
+  using bounds_l = ArgList<Bounds...>;
+  using class_type = typename mfp_traits::class_type;
+  using args_l = ConcatT<ArgList<class_type*>, typename mfp_traits::args_type>;
+  using return_type = typename mfp_traits::return_type;
+  using replaced_types = __closure::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
+  using closure_args = ConcatT<typename __closure::ReplacePlaceHoldersWithGetters<bounds_l, args_l>::agents_prototype,
+                               __closure::RemovePrefixWeakT<bounds_l, args_l>>;
+  auto res = __closure::MakeClosureImpl<return_type>(closure_args{}, replaced_types{}, method,
+                                                     std::forward<Bounds>(bound_args)...);
   using closure_res_t = typename std::remove_pointer_t<decltype(res)>::closure_type;
   return Closure<closure_res_t>(static_cast<__closure::ClosureImplBase<closure_res_t>*>(res));
 }

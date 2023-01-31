@@ -60,8 +60,6 @@ struct RemovePrefixWeak<ArgList<>, ArgList<Args2...>> {
 
 template <class F1, class... Os1, class F2, class... Os2>
 struct RemovePrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>> {
-  static_assert(IsPrefixWeak<ArgList<F1, Os1...>, ArgList<F2, Os2...>>::value,
-                "template argument 1 is not the weak prefix of template argument 2");
   using type = typename RemovePrefixWeak<ArgList<Os1...>, ArgList<Os2...>>::type;
 };
 
