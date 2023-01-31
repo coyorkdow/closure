@@ -1,6 +1,7 @@
 #include <cassert>
-#include <iostream>
 #include <memory>
+#include <numeric>
+#include <strstream>
 
 #include "closure.hpp"
 #include "gtest/gtest.h"
@@ -293,11 +294,24 @@ int calculate_sum(const std::string& exp) {
 
 void test_ref(int& v) { v++; }
 
-TEST(TestClosure, StaticLint) {
-  using validator = __closure::Validator<int (*)(std::unique_ptr<int, std::default_delete<int>>), closure::ArgList<>,
-                                         closure::ArgList<std::unique_ptr<int, std::default_delete<int>>>>;
+TEST(TestValidator, InvokeFunctionPointer) {
+  using validator =
+      __closure::Validator<int (*)(std::unique_ptr<int, std::default_delete<int>>),
+                           closure::ArgList<std::unique_ptr<int, std::default_delete<int>>>, closure::ArgList<>>;
   static_assert(!validator::is_invokable, "");
   static_assert(std::is_same<validator::invoke_result, typename validator::ErrType>::value, "");
+}
+
+TEST(TestValidator, InvokeMemberFunction) {
+  struct C {
+    int foo(int, int) { return 0; }
+  } c;
+  using m1 = int (C::*)(int, int);
+  using _ = traits::invoke_result_t<m1, C*, int, int>;
+  static_assert(std::is_same<_, int>::value, "");
+  using v1 = __closure::Validator<m1, ArgList<std::unique_ptr<C>>, ArgList<int, int>>;
+  static_assert(v1::is_invokable, "");
+  static_assert(std::is_same<typename v1::invoke_result, int>::value, "");
 }
 
 TEST(TestClosure, FunctionPointer) {
@@ -334,45 +348,14 @@ TEST(TestClosure, FunctionPointer) {
   EXPECT_EQ(closure4("1+2+3"), 6);
 }
 
-TEST(TestClosureWithPlaceHolders, FunctionPointer) {
-  auto closure1 = MakeClosure(sum, closure::PlaceHolder<0>());
-  static_assert(std::is_same<decltype(closure1), Closure<std::size_t(const int&, double, int, int)>>::value, "");
-  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
-  auto closure2 = MakeClosure(sum, closure::PlaceHolder<2>(), closure::PlaceHolder<1>(), closure::PlaceHolder<3>());
-  static_assert(
-      std::is_same<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>::value, "");
-  EXPECT_EQ(closure2("ignored", 1, 2, 3, 4), 10);
-  closure1 = sum;
-  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
-  auto closure3 = MakeClosure(forwarding_test, closure::PlaceHolder<1>());
-  auto ptr = std::make_unique<int>(5);
-  EXPECT_EQ(closure3(nullptr, std::move(ptr)), 5);
-
-  Closure<int(int, std::unique_ptr<int>)> closure4(forwarding_test, PlaceHolder<1>());
-  EXPECT_EQ(closure4(1, std::make_unique<int>(1)), 1);
-  closure4 = closure3;
-  EXPECT_EQ(closure4(2, std::make_unique<int>(1)), 1);
-}
-
-TEST(TestClosureWithPlaceHolders, Functor) {
-  std::string unused = "12345";
-  auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
-  auto closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
-  EXPECT_EQ(closure1(5, 3), -2);
-  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);
-  EXPECT_EQ(closure1(4, 1), 0);
-  Closure<int64_t(int, int)> closure2(lambda1, PlaceHolder<1>(), PlaceHolder<0>());
-  EXPECT_EQ(closure2(3, 4), 1);
-  closure2 = closure1;
-  EXPECT_EQ(closure2(7, 3), 2);
-
-  auto lambda2 = [](const std::string&, const char*) {};
-  (void) lambda2;
-  //    auto closure3 = MakeClosure(lambda2, PlaceHolder<0>(), PlaceHolder<0>()); cannot initialize such closure
-  auto lambda3 = [](const char* v1, const std::string& v2) -> std::string { return v1 + v2; };
-  auto closure3 = MakeClosure(lambda3, PlaceHolder<0>(), PlaceHolder<0>());
-  EXPECT_EQ(closure3("123"), "123123");
-}
+struct NonSimpleFunctor {
+  int operator()() const { return 0; }
+  int operator()(int v) const { return v; }
+  template <class A, class B>
+  decltype(auto) operator()(A&& a, B&& b) const {
+    return a * b;
+  }
+};
 
 TEST(TestClosure, Functor) {
   std::string exp = "11+12+13";
@@ -384,6 +367,17 @@ TEST(TestClosure, Functor) {
   closure1 = std::move(wrap_twice);
   EXPECT_FALSE(wrap_twice);  // should be empty after moved
   EXPECT_EQ(closure1(), 36);
+
+  struct SimpleFunctor {
+    int operator()(int a, int b) const { return a + b; }
+  };
+  auto closure2 = MakeClosure(SimpleFunctor{});
+  EXPECT_EQ(closure2(1, 2), 3);
+  //  closure2 = MakeClosure(NonSimpleFunctor{});
+  closure2 = NonSimpleFunctor{};
+  EXPECT_EQ(closure2(2, 3), 6);
+  closure1 = NonSimpleFunctor{};
+  EXPECT_EQ(closure1(), 0);
 }
 
 TEST(TestClosure, Copy) {
@@ -426,11 +420,16 @@ TEST(TestClosure, Copy) {
 class TestClassBindMethod {
  public:
   int ResIntArg0() const { return 0; }
-  int ResIntArg1(int v) const { return v; }
-  int ResIntArgs3(int v1, int v2, int v3) const { return v1 + v2 + v3; }
+  int ResIntArg1NonConst(int v) { return v; }
+  std::string ResStrArgs3(const std::string& v1, int v2, double v3) const {
+    std::ostringstream from_double;
+    from_double.precision(2);
+    from_double << std::fixed << v3;
+    return v1 + std::to_string(v2) + from_double.str();
+  }
   std::size_t ResSizeTArg1NonConst(int add) {
     change_.emplace_back(add);
-    return change_.size();
+    return std::accumulate(change_.begin(), change_.end(), 0);
   }
   static void StaticFunc() {}
 
@@ -446,6 +445,76 @@ TEST(TestClosure, Method) {
   auto closure1 = MakeClosure(&TestClassBindMethod::ResIntArg0, &cl);
   EXPECT_EQ(closure1(), 0);
 
-  closure1 = MakeClosure(&TestClassBindMethod::ResIntArg1, std::make_unique<TestClassBindMethod>(), 233);
+  closure1 = MakeClosure(&TestClassBindMethod::ResIntArg1NonConst, std::make_unique<TestClassBindMethod>(), 233);
   EXPECT_EQ(closure1(), 233);
+
+  auto closure2 = MakeClosure(&TestClassBindMethod::ResIntArg1NonConst);
+  static_assert(std::is_same<decltype(closure2), Closure<int(TestClassBindMethod*, int)>>::value, "");
+  EXPECT_EQ(closure2(&cl, 5), 5);
+  closure2 = &TestClassBindMethod::ResSizeTArg1NonConst;
+  EXPECT_EQ(closure2(&cl, 1), 1);
+  EXPECT_EQ(closure2(&cl, 2), 3);
+  EXPECT_EQ(closure2(&cl, 3), 6);
+
+  const TestClassBindMethod ccl;  // cannot non-const method
+  //  MakeClosure(&TestClassBindMethod::ResIntArg1NonConst, ccl);
+  EXPECT_EQ(MakeClosure(&TestClassBindMethod::ResIntArg1NonConst, cl)(1), 1);  // OK
+  EXPECT_EQ(MakeClosure(&TestClassBindMethod::ResStrArgs3, &ccl, "1", 2, 3.45)(), "123.45");
+
+  Closure<std::string()> closure3(&TestClassBindMethod::ResStrArgs3, &ccl, "1", 2, 3.45);
+  EXPECT_EQ(closure3(), "123.45");
+}
+
+TEST(TestClosureWithPlaceHolders, FunctionPointer) {
+  auto closure1 = MakeClosure(sum, closure::PlaceHolder<0>());
+  static_assert(std::is_same<decltype(closure1), Closure<std::size_t(const int&, double, int, int)>>::value, "");
+  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
+  auto closure2 = MakeClosure(sum, closure::PlaceHolder<2>(), closure::PlaceHolder<1>(), closure::PlaceHolder<3>());
+  static_assert(
+      std::is_same<decltype(closure2), Closure<std::size_t(closure::Any, double, const int&, int, int)>>::value, "");
+  EXPECT_EQ(closure2("ignored", 1, 2, 3, 4), 10);
+  closure1 = sum;
+  EXPECT_EQ(closure1(1, 2, 3, 4), 10);
+  auto closure3 = MakeClosure(forwarding_test, closure::PlaceHolder<1>());
+  auto ptr = std::make_unique<int>(5);
+  EXPECT_EQ(closure3(nullptr, std::move(ptr)), 5);
+
+  Closure<int(int, std::unique_ptr<int>)> closure4(forwarding_test, PlaceHolder<1>());
+  EXPECT_EQ(closure4(1, std::make_unique<int>(1)), 1);
+  closure4 = std::move(closure3);
+  EXPECT_EQ(closure4(2, std::make_unique<int>(1)), 1);
+  EXPECT_FALSE(closure3);
+}
+
+TEST(TestClosureWithPlaceHolders, Functor) {
+  std::string unused = "12345";
+  auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
+  auto closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
+  EXPECT_EQ(closure1(5, 3), -2);
+  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);
+  EXPECT_EQ(closure1(4, 1), 0);
+  Closure<int64_t(int, int)> closure2(lambda1, PlaceHolder<1>(), PlaceHolder<0>());
+  EXPECT_EQ(closure2(3, 4), 1);
+  closure2 = closure1;
+  EXPECT_EQ(closure2(7, 3), 2);
+
+  auto lambda2 = [](const std::string&, const char*) {};
+  (void)lambda2;
+  //    auto closure3 = MakeClosure(lambda2, PlaceHolder<0>(), PlaceHolder<0>()); cannot initialize such closure
+  auto lambda3 = [](const char* v1, const std::string& v2) -> std::string { return v1 + v2; };
+  auto closure3 = MakeClosure(lambda3, PlaceHolder<0>(), PlaceHolder<0>());
+  EXPECT_EQ(closure3("123"), "123123");
+}
+
+TEST(TestClosureWithPlaceHolders, Method) {
+  TestClassBindMethod cl;
+  auto closure1 = MakeClosure(&TestClassBindMethod::ResStrArgs3, PlaceHolder<2>(), PlaceHolder<1>(), PlaceHolder<0>());
+  static_assert(std::is_same<decltype(closure1),
+                             Closure<std::string(int, const std::string&, TestClassBindMethod*, double)>>::value,
+                "");
+  EXPECT_EQ(closure1(3, "+", &cl, 5.55), "+35.55");
+
+  Closure<std::string(int, std::string, const TestClassBindMethod&, double)> closure2(
+      &TestClassBindMethod::ResStrArgs3, PlaceHolder<2>(), PlaceHolder<1>(), PlaceHolder<0>());
+  EXPECT_EQ(closure2(3, "+", cl, 5.55), "+35.55");
 }
