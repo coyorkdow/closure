@@ -1,7 +1,7 @@
 #include <cassert>
 #include <memory>
 #include <numeric>
-#include <strstream>
+#include <sstream>
 
 #include "closure.hpp"
 #include "gtest/gtest.h"
