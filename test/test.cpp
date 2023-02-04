@@ -256,6 +256,44 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
       "");
 }
 
+TEST(TestStoragePool, SmallObject) {
+  __closure::StoragePool pool;
+  pool.emplace<int>(5);
+  EXPECT_EQ(*pool.get<int>(), 5);
+  pool.erase<int>();
+  pool.emplace<double>(3.1415926);
+  EXPECT_DOUBLE_EQ(*pool.get<double>(), 3.1415926);
+  pool.erase<double>();
+  auto lambda = [](int a, int b) { return a + b; };
+  pool.emplace<decltype(lambda)>(lambda);
+  EXPECT_EQ((*pool.get<decltype(lambda)>())(1, 2), 3);
+  pool.erase<decltype(lambda)>();
+}
+
+struct NonSmallObject {
+  std::string str;
+  NonSmallObject() = default;
+  template <class... Args>
+  explicit NonSmallObject(Args&&... args) : str(std::forward<Args>(args)...) {}
+};
+static_assert(!__closure::soo::IsSmallObject<NonSmallObject>::value, "");
+
+TEST(TestStoragePool, NonTrivial) {
+  __closure::StoragePool pool;
+  pool.emplace<NonSmallObject>();
+  NonSmallObject* ref = pool.get<NonSmallObject>();
+  ref->str = "12345";
+  EXPECT_EQ(pool.get<NonSmallObject>()->str, "12345");
+  pool.erase<NonSmallObject>();
+  pool.emplace<NonSmallObject>(5, 'a');
+  EXPECT_EQ(pool.get<NonSmallObject>()->str, "aaaaa");
+  pool.erase<NonSmallObject>();
+  NonSmallObject tmp(1000, '0');
+  pool.emplace<NonSmallObject>(std::move(tmp));
+  EXPECT_EQ(pool.get<NonSmallObject>()->str, std::string(1000, '0'));
+  pool.erase<NonSmallObject>();
+}
+
 TEST(TestAnyType, Any) {
   auto test = [](closure::Any) {};
   test(1);
@@ -266,9 +304,9 @@ TEST(TestAnyType, Any) {
 
 TEST(TestClosure, EmptyBaseOptimize) {
   using c1 = __closure::ClosureImpl<void(), void (*)(), ArgList<>>;
-  // TODO eliminate vptr
-  static_assert(sizeof(c1) == 16, "");
-  //  static_assert(sizeof(c1) == 8, "");
+  static_assert(sizeof(c1) == 8, "");
+  using c2 = Closure<int(int, int)>;
+  static_assert(sizeof(c2) == 32, "");
 }
 
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
@@ -317,18 +355,18 @@ TEST(TestValidator, InvokeMemberFunction) {
 TEST(TestClosure, FunctionPointer) {
   auto closure1 = MakeClosure(sum, 1);
   static_assert(std::is_same<decltype(closure1), Closure<std::size_t(double, int, int)>>::value, "");
-  ASSERT_EQ(closure1.Run(2, 3, 4), 10);
+  ASSERT_EQ(closure1(2, 3, 4), 10);
   double lvalue = 2;
   EXPECT_EQ(closure1(lvalue, 3, 4), 10);  // can accept lvalue
   typename std::add_const<decltype(sum)*>::type fptr = sum;
   closure1 = MakeClosure(fptr, 1);  // test move assignment
-  ASSERT_EQ(closure1.Run(4, 5, 6), 16);
+  ASSERT_EQ(closure1(4, 5, 6), 16);
 
   Closure<int(std::unique_ptr<int>)> closure2(forwarding_test);
-  ASSERT_EQ(closure2.Run(std::make_unique<int>(10)), 10);
+  ASSERT_EQ(closure2(std::make_unique<int>(10)), 10);
 
   std::string exp = "11+12+13";
-  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp)).Run(), 36);
+  ASSERT_EQ(MakeClosure(calculate_sum, std::move(exp))(), 36);
   ASSERT_TRUE(exp.empty());
 
   int v = 0;
@@ -337,10 +375,10 @@ TEST(TestClosure, FunctionPointer) {
   closure3 = MakeClosure(test_ref, v);  // test move assignment
   static_assert(std::is_same<decltype(closure3), Closure<void()>>::value, "");
   static_assert(!std::is_const<decltype(v)>::value, "");
-  closure3.Run();
+  closure3();
   ASSERT_TRUE(v == 0);
   closure3 = MakeClosure(test_ref, std::ref(v));
-  closure3.Run();
+  closure3();
   ASSERT_TRUE(v == 1);
 
   Closure<int(std::string)> closure4;
@@ -361,7 +399,7 @@ TEST(TestClosure, Functor) {
   std::string exp = "11+12+13";
   auto wrap_sum = [=]() { return calculate_sum(exp); };
   auto closure1 = MakeClosure(wrap_sum);
-  EXPECT_EQ(closure1.Run(), 36);
+  EXPECT_EQ(closure1(), 36);
   std::function<float()> wrap_twice(wrap_sum);
   EXPECT_TRUE(wrap_twice);
   closure1 = std::move(wrap_twice);
