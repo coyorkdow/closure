@@ -110,10 +110,9 @@ class Getter {
   using result_type = decltype(std::get<I>(std::declval<AgentsTuple&>()).Target());
 
   Getter() noexcept = default;
-  Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can be implicitly converted to the Getter.
+  explicit Getter(PH<I>) noexcept {}  // allow that the PlaceHolder can convert to the Getter.
   // Mapping a Getter to an Agent.
   result_type Get(AgentsTuple& agents) const noexcept { return std::get<I>(agents).Target(); }
-  operator result_type() const noexcept { return Get(); }
 
   Getter(const Getter&) noexcept = default;  // A pseudo copy constructor, which is only used for copy traits
   Getter& operator=(const Getter&) = delete;
