@@ -7,6 +7,14 @@
 
 Closure is header-only. To use Closure, simply copy `closure.hpp` and dicectory `closure` into your project.
 
+## Features
+
+- Support almost all the methods of `std::function`, except `target_type()` (need RTTI).
+- Support arguments binding, therefore it can replace `std::bind`.
+- It can stores non-copyable object, like `std::unique_ptr`. An extra method `copyable()` is provided to check if the object currently stored in a `Closure` instance is copyable. If it returns `false`, then trying copy this instance (construct or assign) will get an empty `Closure`.
+- Support small object optimization. On x64 machines, any objects of the type which is trivially copyable and `sizeof` not greater than 16 will be stored locally. No dynamical memory allocated.
+- Helper function `MakeClosure` can create a closure and deduce its type, you can use `auto` instead of manually writing the `Closure`'s template arguments. `MakeClosure` also supports arguments binding.
+
 ## Basic Usage
 
 Use Closure like std::function. Store the function pointer or any callable object (include lambda).
@@ -28,33 +36,38 @@ int calculate_sum(const std::string& exp) {
   return ans;
 }
 
-TEST(TestClosure, UseLikeSTDFunction) {
-  Closure<int(const std::string&)> closure1;
-  closure1 = calculate_sum;
-  EXPECT_EQ(closure1("1+2+3"), 6);
+using namespace closure;
+Closure<int(const std::string&)> closure1;
+closure1 = calculate_sum;
+closure1("1+2+3"); // result is 6
 
-  std::string exp = "1+2+3";
-  auto wrap_sum = [=] (const std::string& exp2) {
-    return calculate_sum(exp + "+" + exp2);
-  };
-  closure1 = wrap_sum;
-  EXPECT_EQ(closure1("4"), 10);
-  std::function<int(std::string)> wrap_twice(wrap_sum);
-  EXPECT_TRUE(wrap_twice);
-  closure1 = std::move(wrap_twice);
-  EXPECT_FALSE(wrap_twice); // should be empty after moved
-  EXPECT_EQ(closure1("4"), 10);
-}
+std::string exp = "1+2+3";
+auto wrap_sum = [=] (const std::string& exp2) {
+  return calculate_sum(exp + "+" + exp2);
+};
+closure1 = wrap_sum;
+closure1("4"); // result is 10
 ```
 
 ## Binding
 
-Still work in progress.
+You can fast bind the first n arguments by passing them to the constructor or `MakeClosure`.
 
 ```C++
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
 
+using namespace closure;
 auto closure1 = MakeClosure(sum, 1); // bind 1 to arg v1
+// Or Closure<std::size_t(double, int, int)> closure1(sum, 1);
 static_assert(std::is_same<decltype(closure1), Closure<std::size_t(double, int, int)>>::value);
-EXPECT_EQ(closure1(2, 3, 4), 10);
+closure1(2, 3, 4); // result is 10
+```
+
+Alternatively, you can use placeholders. The number of placeholders is unlimited.
+
+```C++
+auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
+
+auto closure1 = closure::MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
+closure1(5, 3); // result is -2
 ```
