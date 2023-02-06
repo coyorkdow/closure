@@ -132,11 +132,23 @@ struct AgentsType {
 template <class>
 struct HasGetter : std::false_type, AgentsType<void> {};
 
-template <size_t I, class AgentsTuple, class... Tps>
-struct HasGetter<ArgList<Getter<AgentsTuple, I>, Tps...>> : std::true_type, AgentsType<AgentsTuple> {};
+template <size_t I, class AgentsTuple, class... Os>
+struct HasGetter<ArgList<Getter<AgentsTuple, I>, Os...>> : std::true_type, AgentsType<AgentsTuple> {};
 
 template <class F, class... Os>
 struct HasGetter<ArgList<F, Os...>> : HasGetter<ArgList<Os...>> {};
+
+template <class>
+struct HasNonGetter;
+
+template <>
+struct HasNonGetter<ArgList<>> : std::false_type {};
+
+template <class F, class... Os>
+struct HasNonGetter<ArgList<F, Os...>> : std::true_type {};
+
+template <size_t I, class AgentsTuple, class... Os>
+struct HasNonGetter<ArgList<Getter<AgentsTuple, I>, Os...>> : HasNonGetter<ArgList<Os...>> {};
 
 template <size_t I, class Tuple, class Agents,
           std::enable_if_t<IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
