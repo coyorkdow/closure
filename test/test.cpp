@@ -9,7 +9,7 @@
 using namespace closure;
 
 TEST(TestArg, Main) {
-  using namespace __closure;
+  using namespace closureimpl;
 
   static_assert(IsPrefixWeak<ArgList<>, ArgList<>>::value, "");
   static_assert(std::is_same<RemovePrefixWeakT<ArgList<>, ArgList<>>, ArgList<>>::value, "");
@@ -55,7 +55,7 @@ TEST(TestArg, Main) {
 
 TEST(TestPlaceHolder, Sort) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   static_assert(std::is_same<std::index_sequence<0>, typename sort::TEST_Sort<PH<0>>::type>::value, "");
   static_assert(std::is_same<std::index_sequence<1, 2, 3>, typename sort::TEST_Sort<PH<2>, PH<3>, PH<1>>::type>::value,
                 "");
@@ -179,7 +179,7 @@ TEST(TestAgentAndGetter, GettersMapping) {
 
 TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   using args = ArgList<int, double, std::string, long>;
   using binds = ArgList<int, PH<1>, PH<0>, long>;
   static_assert(IsPrefixWeak<binds, args>::value, "");
@@ -192,7 +192,7 @@ TEST(TestAgentAndGetter, GetPlaceHoldersCorrespondTypes) {
 
 TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   using args = ArgList<int, double, std::string, long, char, float>;
   using binds = ArgList<int, PH<1>, PH<3>, long, PH<0>, PH<2>>;
   using ph_args = GetPlaceHoldersCorrespondTypesT<binds, args>;
@@ -206,7 +206,7 @@ TEST(TestAgentAndGetter, SortPlaceHoldersCorrespondTypes) {
 
 TEST(TestAgentAndGetter, StableSort) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   using args = ArgList<int, double, std::string, long, char, float, void*>;
   using binds = ArgList<PH<3>, PH<1>, PH<3>, PH<1>, PH<2>, PH<5>, PH<2>>;
   using ph_args = GetPlaceHoldersCorrespondTypesT<binds, args>;
@@ -222,7 +222,7 @@ TEST(TestAgentAndGetter, StableSort) {
 
 TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters1) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   using args = ArgList<int, double, std::string, long, char, float, void*, unsigned>;
   using binds = ArgList<PH<3>, PH<2>, std::string, PH<0>, char, PH<5>>;
   using result = ReplacePlaceHoldersWithGettersT<binds, args>;
@@ -240,7 +240,7 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters1) {
 
 TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
   using namespace placeholders;
-  using namespace __closure;
+  using namespace closureimpl;
   using args = ArgList<int, double, std::string, long, char, float, void*, unsigned>;
   using binds = ArgList<PH<3>, PH<2>, std::string, PH<2>, char, float, PH<5>>;
   using result = ReplacePlaceHoldersWithGettersT<binds, args>;
@@ -257,7 +257,7 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
 }
 
 TEST(TestStoragePool, SmallObject) {
-  __closure::StoragePool pool;
+  closureimpl::StoragePool pool;
   pool.emplace<int>(5);
   EXPECT_EQ(*pool.get<int>(), 5);
   pool.erase<int>();
@@ -276,10 +276,10 @@ struct NonSmallObject {
   template <class... Args>
   explicit NonSmallObject(Args&&... args) : str(std::forward<Args>(args)...) {}
 };
-static_assert(!__closure::soo::IsSmallObject<NonSmallObject>::value, "");
+static_assert(!closureimpl::soo::IsSmallObject<NonSmallObject>::value, "");
 
 TEST(TestStoragePool, NonTrivial) {
-  __closure::StoragePool pool;
+  closureimpl::StoragePool pool;
   pool.emplace<NonSmallObject>();
   NonSmallObject* ref = pool.get<NonSmallObject>();
   ref->str = "12345";
@@ -303,10 +303,14 @@ TEST(TestAnyType, Any) {
 }
 
 TEST(TestClosure, EmptyBaseOptimize) {
-  using c1 = __closure::ClosureImpl<void(), void (*)(), ArgList<>>;
+  using c1 = closureimpl::ClosureImpl<void(), void (*)(), ArgList<>>;
   static_assert(sizeof(c1) == 8, "");
-  using c2 = Closure<int(int, int)>;
-  static_assert(sizeof(c2) == 32, "");
+  using agents = std::tuple<placeholders::Agent<int>, placeholders::Agent<int>>;
+  using c2 = closureimpl::ClosureImpl<void(), void (*)(int, int),
+                                      ArgList<placeholders::Getter<agents, 1>, placeholders::Getter<agents, 0>>>;
+  static_assert(sizeof(c2) == 8, "");
+  using c3 = Closure<int(int, int)>;
+  static_assert(sizeof(c3) == 32, "");
 }
 
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
@@ -334,8 +338,8 @@ void test_ref(int& v) { v++; }
 
 TEST(TestValidator, InvokeFunctionPointer) {
   using validator =
-      __closure::Validator<int (*)(std::unique_ptr<int, std::default_delete<int>>),
-                           closure::ArgList<std::unique_ptr<int, std::default_delete<int>>>, closure::ArgList<>>;
+      closureimpl::Validator<int (*)(std::unique_ptr<int, std::default_delete<int>>),
+                             closure::ArgList<std::unique_ptr<int, std::default_delete<int>>>, closure::ArgList<>>;
   static_assert(!validator::is_invokable, "");
   static_assert(std::is_same<validator::invoke_result, typename validator::ErrType>::value, "");
 }
@@ -347,7 +351,7 @@ TEST(TestValidator, InvokeMemberFunction) {
   using m1 = int (C::*)(int, int);
   using _ = traits::invoke_result_t<m1, C*, int, int>;
   static_assert(std::is_same<_, int>::value, "");
-  using v1 = __closure::Validator<m1, ArgList<std::unique_ptr<C>>, ArgList<int, int>>;
+  using v1 = closureimpl::Validator<m1, ArgList<std::unique_ptr<C>>, ArgList<int, int>>;
   static_assert(v1::is_invokable, "");
   static_assert(std::is_same<typename v1::invoke_result, int>::value, "");
 }
@@ -431,7 +435,7 @@ TEST(TestClosure, Copy) {
   auto closure2 = MakeClosure(lambda2);
   EXPECT_EQ(closure2(), 1);
   static_assert(std::is_same<decltype(closure1), decltype(closure2)>::value, "");
-  EXPECT_TRUE(closure2.Copyable());
+  EXPECT_TRUE(closure2.copyable());
   closure1 = closure2;
   EXPECT_TRUE(closure1);  // copy succeeded
   EXPECT_EQ(closure1(), 2);
@@ -445,11 +449,11 @@ TEST(TestClosure, Copy) {
   //  std::function<int()> _ = std::move(lambda3); /*can't compile*/
   closure2 = std::move(lambda3);
   EXPECT_TRUE(closure2);
-  EXPECT_FALSE(closure2.Copyable());
+  EXPECT_FALSE(closure2.copyable());
   EXPECT_EQ(closure2(), 0);
   closure1 = closure2;
   EXPECT_FALSE(closure1);            // copy failed
-  EXPECT_TRUE(closure1.Copyable());  // an empty closure is copyable
+  EXPECT_TRUE(closure1.copyable());  // an empty closure is copyable
   closure1 = std::move(closure2);
   EXPECT_TRUE(closure1);
   EXPECT_EQ(closure1(), 1);

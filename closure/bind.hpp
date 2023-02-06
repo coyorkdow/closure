@@ -8,7 +8,7 @@
 
 namespace closure {
 
-namespace __closure {
+namespace closureimpl {
 
 template <class, class>
 struct IsPrefixWeak : std::false_type {};
@@ -289,6 +289,6 @@ struct GenerateGettersFromClosureArgs {
 template <class Prefix, class ArgL>
 using GenerateGettersFromClosureArgsT = typename GenerateGettersFromClosureArgs<Prefix, ArgL>::type;
 
-}  // namespace __closure
+}  // namespace closureimpl
 
 }  // namespace closure
