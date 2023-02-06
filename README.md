@@ -17,7 +17,7 @@ Closure is header-only. To use Closure, simply copy `closure.hpp` and dicectory 
 
 ## Basic Usage
 
-Use Closure like std::function. Store the function pointer or any callable object (include lambda).
+Use like `std::function`. Store a function pointer or any callable object (including pointer to member function).
 ```C++
 int calculate_sum(const std::string& exp) {
   int ans = 0;
