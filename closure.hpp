@@ -63,7 +63,7 @@ class Validator<Callable, ArgList<StoredArgs...>, ArgList<Args...>> {
 
   template <class AgentsTuple, size_t I>
   struct RealInvokeArg<placeholders::Getter<AgentsTuple, I>> {
-    using type = typename placeholders::Getter<AgentsTuple, I>::result_type;
+    using type = typename placeholders::Getter<AgentsTuple, I>::get_result_type;
   };
 
   template <class Agents>
@@ -97,7 +97,7 @@ class ClosureImplHandler;
 // If it has placeholders, all placeholders must have been already replaced with getters.
 template <class R, class... Args, class Callable, class... StoredArgs>
 class ClosureImpl<R(Args...), Callable, ArgList<StoredArgs...>/*,
-                  std::enable_if_t<!std::is_member_function_pointer<Callable>::value>*/>
+                   std::enable_if_t<!std::is_member_function_pointer<Callable>::value>*/>
     : public ClosureImplBase<R(Args...)>, private decltype(std::make_tuple(std::declval<StoredArgs>()...)) {
   using base = ClosureImplBase<R(Args...)>;
 
@@ -208,36 +208,18 @@ class StoragePool {
 
   template <class Tp, std::enable_if_t<!soo::IsSmallObject<Tp>::value, int> = 0>
   Tp* get() const noexcept {
-    using ptr_t = Tp*;
-#if !(__cplusplus < 201703L)
-    return *std::launder(reinterpret_cast<const ptr_t*>(mem_));
-#else
-    return *reinterpret_cast<const ptr_t*>(mem_);
-#endif
+    Tp* ptr = nullptr;
+    std::memcpy(&ptr, mem_, sizeof(Tp*));
+    return ptr;
   }
 
-  template <class Tp,
-            std::enable_if_t<soo::IsSmallObject<Tp>::value && !std::is_trivially_destructible<Tp>::value, int> = 0>
-  void erase() noexcept(std::is_nothrow_destructible<Tp>::value) {
-#if !(__cplusplus < 201703L)
-    auto ptr = std::launder(reinterpret_cast<Tp*>(mem_));
-#else
-    auto ptr = reinterpret_cast<Tp*>(mem_);
-#endif
-    ptr->~Tp();
-  }
-
-  template <class Tp,
-            std::enable_if_t<soo::IsSmallObject<Tp>::value && std::is_trivially_destructible<Tp>::value, int> = 0>
+  template <class Tp, std::enable_if_t<soo::IsSmallObject<Tp>::value, int> = 0>
   constexpr void erase() noexcept {}
 
   template <class Tp, std::enable_if_t<!soo::IsSmallObject<Tp>::value, int> = 0>
   void erase() {
-#if !(__cplusplus < 201703L)
-    auto ptr = *std::launder(reinterpret_cast<Tp**>(mem_));
-#else
-    auto ptr = *reinterpret_cast<Tp**>(mem_);
-#endif
+    Tp* ptr = nullptr;
+    std::memcpy(&ptr, mem_, sizeof(Tp*));
     delete ptr;
   }
 
@@ -364,7 +346,7 @@ class Closure<R(Args...)> {
 
   template <class Callable, class... Bounds,
             std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
-                                 !std::is_function<std::remove_reference_t<Callable>>::value &&
+                                 !traits::IsFunctionOrPointerToFunction<std::remove_reference_t<Callable>>::value &&
                                  !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
   explicit Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
@@ -377,7 +359,7 @@ class Closure<R(Args...)> {
 
   template <class Callable, class... Bounds,
             std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
-                                 !std::is_function<std::remove_reference_t<Callable>>::value &&
+                                 !traits::IsFunctionOrPointerToFunction<std::remove_reference_t<Callable>>::value &&
                                  placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
   explicit Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
@@ -404,9 +386,10 @@ class Closure<R(Args...)> {
     return *this;
   }
 
-  template <class Callable, std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
-                                                 !std::is_function<std::remove_reference_t<Callable>>::value,
-                                             int> = 0>
+  template <class Callable,
+            std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
+                                 !traits::IsFunctionOrPointerToFunction<std::remove_reference_t<Callable>>::value,
+                             int> = 0>
   Closure& operator=(Callable&& callable) {
     Closure(std::forward<Callable>(callable)).swap(*this);
     return *this;

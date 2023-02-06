@@ -100,6 +100,11 @@ using std::void_t;
 
 namespace traits {
 
+template <class Tp>
+struct IsFunctionOrPointerToFunction
+    : std::integral_constant<bool, std::is_function<Tp>::value || std::is_function<std::remove_pointer_t<Tp>>::value> {
+};
+
 template <class Tp, void_t<decltype(&Tp::operator->), decltype(&Tp::operator*)>* = nullptr>
 auto IsDereferencableImpl(int) -> std::integral_constant<
     bool, std::is_pointer<decltype(std::declval<Tp>().operator->())>::value &&
