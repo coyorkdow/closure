@@ -533,12 +533,23 @@ TEST(TestClosureWithPlaceHolders, Functor) {
   auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
   auto closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
   EXPECT_EQ(closure1(5, 3), -2);
-  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);
+  auto lptr = closure1.target<decltype(lambda1)>();
+  ASSERT_NE(lptr, nullptr);
+  EXPECT_EQ((*lptr)(6, 9), -3);
+  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1); // Now it stores the closure returned by MakeClosure
+  EXPECT_EQ(closure1.target<decltype(lambda1)>(), nullptr);
   EXPECT_EQ(closure1(4, 1), 0);
   Closure<int64_t(int, int)> closure2(lambda1, PlaceHolder<1>(), PlaceHolder<0>());
   EXPECT_EQ(closure2(3, 4), 1);
   closure2 = closure1;
   EXPECT_EQ(closure2(7, 3), 2);
+
+  lptr = closure2.target<decltype(lambda1)>();
+  ASSERT_EQ(lptr, nullptr);
+
+  auto cptr = closure2.target<Closure<int(int, int)>>();
+  ASSERT_NE(cptr, nullptr);
+  EXPECT_EQ((*cptr)(8, 6), 5);
 
   auto lambda2 = [](const std::string&, const char*) {};
   (void)lambda2;
@@ -559,4 +570,10 @@ TEST(TestClosureWithPlaceHolders, Method) {
   Closure<std::string(int, std::string, const TestClassBindMethod&, double)> closure2(
       &TestClassBindMethod::ResStrArgs3, PlaceHolder<2>(), PlaceHolder<1>(), PlaceHolder<0>());
   EXPECT_EQ(closure2(3, "+", cl, 5.55), "+35.55");
+
+  auto ptr = closure2.target<decltype(&TestClassBindMethod::ResStrArgs3)>();
+  EXPECT_NE(ptr, nullptr);
+  EXPECT_EQ((cl.**ptr)("+", 3, 4.44), "+34.44");
+  auto ptr2 = closure2.target<int()>();
+  EXPECT_EQ(ptr2, nullptr);
 }
