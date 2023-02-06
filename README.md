@@ -5,6 +5,8 @@
 [![Linux Status](https://github.com/coyorkdow/closure/actions/workflows/linux.yml/badge.svg)](https://github.com/coyorkdow/closure/actions/workflows/linux.yml)
 [![macOS Status](https://github.com/coyorkdow/closure/actions/workflows/macos.yml/badge.svg)](https://github.com/coyorkdow/closure/actions/workflows/macos.yml)
 
+Minimum requriement: C++14
+
 Closure is header-only. To use Closure, simply copy `closure.hpp` and dicectory `closure` into your project.
 
 ## Features
