@@ -58,15 +58,15 @@ std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 +
 
 using namespace closure;
 auto closure1 = MakeClosure(sum, 1); // bind 1 to arg v1
-// Or Closure<std::size_t(double, int, int)> closure1(sum, 1);
+// Alternatively, Closure<std::size_t(double, int, int)> closure1(sum, 1);
 static_assert(std::is_same<decltype(closure1), Closure<std::size_t(double, int, int)>>::value);
 closure1(2, 3, 4); // result is 10
 ```
 
-Alternatively, you can use placeholders. The number of placeholders is unlimited.
+Or, you can use placeholders. The number of placeholders is unlimited.
 
 ```C++
-auto lambda1 = [unused](int v1, int v2) { return v1 - v2; };
+auto lambda1 = [](int v1, int v2) { return v1 - v2; };
 
 auto closure1 = closure::MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
 closure1(5, 3); // result is -2
