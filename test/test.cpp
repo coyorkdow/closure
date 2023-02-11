@@ -508,7 +508,7 @@ TEST(TestClosure, Method) {
   {
     auto c1 = MakeClosure(&TestClassBindMethod::ResIntArg0);
     static_assert(std::is_same<Closure<int(TestClassBindMethod*)>, decltype(c1)>::value, "");
-//    std::function f1 = &TestClassBindMethod::ResIntArg0;
+    //    std::function f1 = &TestClassBindMethod::ResIntArg0;
   }
 
   auto ptr = std::make_unique<TestClassBindMethod>();
@@ -542,7 +542,7 @@ TEST(TestClosure, NonSimpleFunctor) {
   struct Simple {
     int operator()(int a, int b) const { return a + b; }
   };
-  closure2 = MakeClosure(Simple{}); // ok
+  closure2 = MakeClosure(Simple{});  // ok
 }
 
 TEST(TestClosureWithPlaceHolders, FunctionPointer) {
@@ -614,4 +614,18 @@ TEST(TestClosureWithPlaceHolders, Method) {
   EXPECT_EQ((cl.**ptr)("+", 3, 4.44), "+34.44");
   auto ptr2 = closure2.target<int()>();
   EXPECT_EQ(ptr2, nullptr);
+}
+
+TEST(TestClosureWithPlaceHolders, Any) {
+  auto lambda = [](int a, int b) { return a + b; };
+  auto closure = MakeClosure(lambda, PlaceHolder<1>(), PlaceHolder<3>());
+  EXPECT_EQ(closure("123", 4, "567", 8), 12);
+  EXPECT_EQ(closure(std::vector<int>{1, 2}, 3, std::vector<long>{4, 5}, 6), 9);
+
+  static_assert(std::is_same<decltype(closure), closure::Closure<int(closure::Any, int, closure::Any, int)>>::value,
+                "");
+  // it's ok that the 4th parameter is float type, because float can implicitly convert to int
+  Closure<int(int, int, std::string, float)> c2(lambda, PlaceHolder<1>(), PlaceHolder<3>());
+  c2 = closure;
+  EXPECT_EQ(c2(1, 2, "3", 4.2), 6);
 }
