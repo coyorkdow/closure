@@ -356,7 +356,7 @@ class Closure<R(Args...)> {
             std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
                                  !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
-  explicit Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
+  Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
     auto type_holder = closureimpl::MakeClosureImpl<R>(&storage_, args_type{}, std::forward<Callable>(callable),
                                                        std::forward<Bounds>(bound_args)...);
     using impl_type = std::remove_pointer_t<decltype(type_holder)>;
@@ -368,7 +368,7 @@ class Closure<R(Args...)> {
             std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
                                  placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                              int> = 0>
-  explicit Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
+  Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
     using bounds_l = ArgList<Bounds...>;
     using replaced_types = closureimpl::GenerateGettersFromClosureArgsT<bounds_l, args_type>;
     auto type_holder =

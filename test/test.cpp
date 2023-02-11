@@ -482,7 +482,6 @@ TEST(TestClosure, Method) {
   TestClassBindMethod cl;
   static_assert(std::is_member_function_pointer<decltype(&TestClassBindMethod::ResIntArg0)>::value, "");
   static_assert(traits::IsDereferencable<std::unique_ptr<TestClassBindMethod>>::value, "");
-  auto ptr = std::make_unique<TestClassBindMethod>();
 
   auto closure1 = MakeClosure(&TestClassBindMethod::ResIntArg0, &cl);
   EXPECT_EQ(closure1(), 0);
@@ -505,6 +504,45 @@ TEST(TestClosure, Method) {
 
   Closure<std::string()> closure3(&TestClassBindMethod::ResStrArgs3, &ccl, "1", 2, 3.45);
   EXPECT_EQ(closure3(), "123.45");
+
+  {
+    auto c1 = MakeClosure(&TestClassBindMethod::ResIntArg0);
+    static_assert(std::is_same<Closure<int(TestClassBindMethod*)>, decltype(c1)>::value, "");
+//    std::function f1 = &TestClassBindMethod::ResIntArg0;
+  }
+
+  auto ptr = std::make_unique<TestClassBindMethod>();
+  auto closure4 = MakeClosure(&TestClassBindMethod::ResIntArg1NonConst, std::move(ptr));
+  EXPECT_EQ(closure4(123), 123);
+  auto bounded = [capture0 = std::make_unique<TestClassBindMethod>()](int v) {
+    return capture0->ResIntArg1NonConst(v);
+  };
+  EXPECT_EQ(bounded(123), 123);
+  //  std::function<int(int)> _ = std::move(bounded);  // can't compile
+  closure4 = std::move(bounded);
+  assert(closure4);
+  EXPECT_EQ(closure4(123), 123);
+  EXPECT_FALSE(closure4.copyable());
+  auto closure5 = closure4;
+  EXPECT_FALSE(closure5);
+  assert(!closure5);
+}
+
+TEST(TestClosure, NonSimpleFunctor) {
+  struct NonSimple {
+    std::string operator()() const { return "empty"; }
+    int operator()(int a, int b) const { return a + b; }
+  };
+  //  MakeClosure(NonSimple{}); // can't compile
+  Closure<std::string()> closure1 = NonSimple{};
+  EXPECT_EQ(closure1(), "empty");
+  Closure<int(int, int)> closure2 = NonSimple{};
+  EXPECT_EQ(closure2(1, 2), 3);
+
+  struct Simple {
+    int operator()(int a, int b) const { return a + b; }
+  };
+  closure2 = MakeClosure(Simple{}); // ok
 }
 
 TEST(TestClosureWithPlaceHolders, FunctionPointer) {
@@ -536,7 +574,7 @@ TEST(TestClosureWithPlaceHolders, Functor) {
   auto lptr = closure1.target<decltype(lambda1)>();
   ASSERT_NE(lptr, nullptr);
   EXPECT_EQ((*lptr)(6, 9), -3);
-  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1); // Now it stores the closure returned by MakeClosure
+  closure1 = MakeClosure(lambda1, closure::PlaceHolder<1>(), 1);  // Now it stores the closure returned by MakeClosure
   EXPECT_EQ(closure1.target<decltype(lambda1)>(), nullptr);
   EXPECT_EQ(closure1(4, 1), 0);
   Closure<int64_t(int, int)> closure2(lambda1, PlaceHolder<1>(), PlaceHolder<0>());
