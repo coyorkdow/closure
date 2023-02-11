@@ -75,7 +75,7 @@ closure1(5, 3); // result is -2
 ```
 ## Compare to `std::function`
 
-- `std::function` can only store the copyable object. Before c++23 introduces the `std::move_only_function`, using only the standard library you cannot create a generic functional type which can hold a non-copyable functor.
+- `std::function` can only store the copyable object. Before c++23 introduced `std::move_only_function`, using only the standard library you cannot create a generic functional type which can hold a non-copyable functor.
 
 ```C++
 class TestClassBindMethod {
@@ -101,7 +101,7 @@ assert(!closure5); // trying copy a non-copyable closure will get an empty resul
 
 ```C++
 template <class C, class... Args>
-auto MakeClosure(C&&, Args&&...);
+auto MakeClosure(C&&, Args&&...); // deduce the return type
 ```
 
 If `C` is a function pointer, or a member function pointer (a.k.a. pointer to class method), or a "simple functor". Then `MakeClosure` can be applied, and it will return a closure instance with the proper type.
