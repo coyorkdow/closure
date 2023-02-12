@@ -214,6 +214,6 @@ Since `closure::Any` means any type, you can assign `c` to any other closure wit
 ```C++
 // it's ok that the 4th parameter is float type, because float can implicitly convert to int
 Closure<int(int, int, std::string, float)> c2(lambda, PlaceHolder<1>(), PlaceHolder<3>());
-c2 = closure;
+c2 = c;
 c2(1, 2, "3", 4.2); // result is 6
 ```
