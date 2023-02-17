@@ -481,7 +481,6 @@ class TestClassBindMethod {
 TEST(TestClosure, Method) {
   TestClassBindMethod cl;
   static_assert(std::is_member_function_pointer<decltype(&TestClassBindMethod::ResIntArg0)>::value, "");
-  static_assert(traits::IsDereferencable<std::unique_ptr<TestClassBindMethod>>::value, "");
 
   auto closure1 = MakeClosure(&TestClassBindMethod::ResIntArg0, &cl);
   EXPECT_EQ(closure1(), 0);
@@ -540,9 +539,10 @@ TEST(TestClosure, NonSimpleFunctor) {
   EXPECT_EQ(closure2(1, 2), 3);
 
   struct Simple {
-    int operator()(int a, int b) const { return a + b; }
+    int operator()(int a, int b) const volatile { return a + b; }
   };
   closure2 = MakeClosure(Simple{});  // ok
+  EXPECT_EQ(closure2(7, 8), 15);
 }
 
 TEST(TestClosureWithPlaceHolders, FunctionPointer) {

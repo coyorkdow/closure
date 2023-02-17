@@ -100,55 +100,6 @@ using std::void_t;
 
 namespace traits {
 
-template <class Tp>
-struct IsFunctionOrPointerToFunction
-    : std::integral_constant<bool, std::is_function<Tp>::value || std::is_function<std::remove_pointer_t<Tp>>::value> {
-};
-
-template <class Tp, void_t<decltype(&Tp::operator->), decltype(&Tp::operator*)>* = nullptr>
-auto IsDereferencableImpl(int) -> std::integral_constant<
-    bool, std::is_pointer<decltype(std::declval<Tp>().operator->())>::value &&
-              std::is_reference<decltype(std::declval<Tp>().operator*())>::value &&
-              std::is_same<std::remove_pointer_t<decltype(std::declval<Tp>().operator->())>,
-                           std::remove_reference_t<decltype(std::declval<Tp>().operator*())>>::value>;
-
-template <class Tp>
-auto IsDereferencableImpl(...) -> std::is_pointer<Tp>;
-
-template <class Ptr>
-struct IsDereferencable : decltype(IsDereferencableImpl<Ptr>(0)) {};
-
-template <class Dereferencable, class Method, class... Args>
-auto TryCallMethod(int, Dereferencable&&, Method&&, Args&&...)
-    -> decltype(((*std::declval<Dereferencable>()).*std::declval<Method>())(std::declval<Args>()...), std::true_type{});
-
-auto TryCallMethod(float, ...) -> std::false_type;
-
-template <class Dereferencable, class Method>
-struct CanUsePointerToMemberFunction : std::false_type {};
-
-template <class Dereferencable, class R, class Class, class... Args>
-struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...)>
-    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...)>(),
-                             std::declval<Args>()...)) {};
-
-template <class Dereferencable, class R, class Class, class... Args>
-struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const>
-    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const>(),
-                             std::declval<Args>()...)) {};
-
-#if !(__cplusplus < 201703L)
-template <class Dereferencable, class R, class Class, class... Args>
-struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) noexcept>
-    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) noexcept>(),
-                             std::declval<Args>()...)) {};
-
-template <class Dereferencable, class R, class Class, class... Args>
-struct CanUsePointerToMemberFunction<Dereferencable, R (Class::*)(Args...) const noexcept>
-    : decltype(TryCallMethod(0, std::declval<Dereferencable>(), std::declval<R (Class::*)(Args...) const noexcept>(),
-                             std::declval<Args>()...)) {};
-#endif
-
 template <class Op>
 struct MemberFunctionPointerTraits {};
 
@@ -166,6 +117,20 @@ struct MemberFunctionPointerTraits<R (Class::*)(Args...) const> {
   using args_type = ArgList<Args...>;
 };
 
+template <class R, class Class, class... Args>
+struct MemberFunctionPointerTraits<R (Class::*)(Args...) volatile> {
+  using class_type = Class;
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+template <class R, class Class, class... Args>
+struct MemberFunctionPointerTraits<R (Class::*)(Args...) const volatile> {
+  using class_type = Class;
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
 #if !(__cplusplus < 201703L)
 template <class R, class Class, class... Args>
 struct MemberFunctionPointerTraits<R (Class::*)(Args...) noexcept> {
@@ -176,6 +141,20 @@ struct MemberFunctionPointerTraits<R (Class::*)(Args...) noexcept> {
 
 template <class R, class Class, class... Args>
 struct MemberFunctionPointerTraits<R (Class::*)(Args...) const noexcept> {
+  using class_type = Class;
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+template <class R, class Class, class... Args>
+struct MemberFunctionPointerTraits<R (Class::*)(Args...) volatile noexcept> {
+  using class_type = Class;
+  using return_type = R;
+  using args_type = ArgList<Args...>;
+};
+
+template <class R, class Class, class... Args>
+struct MemberFunctionPointerTraits<R (Class::*)(Args...) const volatile noexcept> {
   using class_type = Class;
   using return_type = R;
   using args_type = ArgList<Args...>;
