@@ -28,6 +28,7 @@ list(APPEND closure_src
         closure/placeholders.hpp
         closure/util.hpp
         closure/bind.hpp
+        closure/trivial_tuple.hpp
         )
 
 add_executable(closure_test

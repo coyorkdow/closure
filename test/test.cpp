@@ -302,17 +302,6 @@ TEST(TestAnyType, Any) {
   test("123");
 }
 
-TEST(TestClosure, EmptyBaseOptimize) {
-  using c1 = closureimpl::ClosureImpl<void(), void (*)(), ArgList<>>;
-  static_assert(sizeof(c1) == 8, "");
-  using agents = std::tuple<placeholders::Agent<int>, placeholders::Agent<int>>;
-  using c2 = closureimpl::ClosureImpl<void(), void (*)(int, int),
-                                      ArgList<placeholders::Getter<agents, 1>, placeholders::Getter<agents, 0>>>;
-  static_assert(sizeof(c2) == 8, "");
-  using c3 = Closure<int(int, int)>;
-  static_assert(sizeof(c3) == 32, "");
-}
-
 std::size_t sum(const int& v1, double v2, int v3, int v4) noexcept { return v1 + v2 + v3 + v4; }
 
 int forwarding_test(std::unique_ptr<int> p) noexcept { return *p; }
@@ -354,6 +343,31 @@ TEST(TestValidator, InvokeMemberFunction) {
   using v1 = closureimpl::Validator<m1, ArgList<std::unique_ptr<C>>, ArgList<int, int>>;
   static_assert(v1::is_invokable, "");
   static_assert(std::is_same<typename v1::invoke_result, int>::value, "");
+}
+
+TEST(TestClosure, EmptyBaseOptimize) {
+  using c1 = closureimpl::ClosureImpl<void(), void (*)(), ArgList<>>;
+  static_assert(sizeof(c1) == 8, "");
+  using agents = std::tuple<placeholders::Agent<int>, placeholders::Agent<int>>;
+  using c2 = closureimpl::ClosureImpl<void(), void (*)(int, int),
+                                      ArgList<placeholders::Getter<agents, 1>, placeholders::Getter<agents, 0>>>;
+  static_assert(sizeof(c2) == 8, "");
+  using c3 = Closure<int(int, int)>;
+  static_assert(sizeof(c3) == 32, "");
+}
+
+TEST(TestClosure, TrivialTuple) {
+  static_assert(std::is_trivially_copyable<placeholders::Agent<int>>::value, "");
+  using c1 = closureimpl::ClosureImpl<void(), void (*)(), ArgList<>>;
+  static_assert(std::is_trivially_copyable<c1>::value, "");
+
+  using c2 = std::remove_pointer_t<decltype(MakeClosure_ClosureImplType(test_ref, 1))>;
+  static_assert(closureimpl::soo::IsSmallObject<c2>::value, "");
+
+  using c3 = std::remove_pointer_t<decltype(MakeClosure_ClosureImplType(sum, PlaceHolder<0>(), PlaceHolder<1>(), 1))>;
+  static_assert(closureimpl::soo::IsSmallObject<c3>::value, "");
+  using c3tuple = typename c3::stored_types;
+  static_assert(sizeof(c3tuple) == 8, "");
 }
 
 TEST(TestClosure, FunctionPointer) {

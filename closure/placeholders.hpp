@@ -5,6 +5,7 @@
 #pragma once
 
 #include "closure/traits.hpp"
+#include "closure/trivial_tuple.hpp"
 #include "closure/util.hpp"
 
 namespace closure {
@@ -151,15 +152,15 @@ template <size_t I, class AgentsTuple, class... Os>
 struct HasNonGetter<ArgList<Getter<AgentsTuple, I>, Os...>> : HasNonGetter<ArgList<Os...>> {};
 
 template <size_t I, class Tuple, class Agents,
-          std::enable_if_t<IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
+          std::enable_if_t<IsGetter<std::decay_t<decltype(tuple::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
 decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&& agents) noexcept {
-  return std::get<I>(std::forward<Tuple>(tuple)).Get(agents);
+  return tuple::get<I>(std::forward<Tuple>(tuple)).Get(agents);
 }
 
 template <size_t I, class Tuple, class Agents,
-          std::enable_if_t<!IsGetter<std::decay_t<decltype(std::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
+          std::enable_if_t<!IsGetter<std::decay_t<decltype(tuple::get<I>(std::declval<Tuple>()))>>::value, int> = 0>
 decltype(auto) TryMapAndGet(Tuple&& tuple, Agents&&) noexcept {
-  return std::get<I>(std::forward<Tuple>(tuple));
+  return tuple::get<I>(std::forward<Tuple>(tuple));
 }
 
 };  // namespace placeholders
