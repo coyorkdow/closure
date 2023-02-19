@@ -505,9 +505,9 @@ template <class Functor, class... Bounds,
                            int> = 0>
 auto MakeClosure_ClosureImplType(Functor&& functor, Bounds&&... bound_args) {
   using functor_traits = traits::SimpleFunctorTraits<std::remove_reference_t<Functor>>;
+  using closure_args = closureimpl::RemovePrefixWeakT<ArgList<Bounds...>, typename functor_traits::args_type>;
   using type = decltype(closureimpl::MakeClosureImpl<typename functor_traits::return_type>(
-      nullptr, typename functor_traits::args_type{}, std::forward<Functor>(functor),
-      std::forward<Bounds>(bound_args)...));
+      nullptr, closure_args{}, std::forward<Functor>(functor), std::forward<Bounds>(bound_args)...));
   return (type)(nullptr);
 }
 

@@ -83,7 +83,8 @@ closure1(5, 3); // result is -2
 ```
 ## Compare to `std::function`
 
-- `std::function` can only store the copyable object. Before c++23 introduced `std::move_only_function`, using only the standard library you cannot create a generic functional type which can hold a non-copyable functor.
+### Stores non-copyable object
+`std::function` can only store the copyable object. Before c++23 introduced `std::move_only_function`, using only the standard library you cannot create a generic functional type which can hold a non-copyable functor.
 
 ```C++
 class TestClassBindMethod {
@@ -105,7 +106,8 @@ auto closure5 = closure4;
 assert(!closure5); // trying copy a non-copyable closure will get an empty result.
 ```
 
-- Before c++17, when using `std::function` you have to correctly write the complete type of the object you want to construct. `MakeClosure` can help you omit this step.
+### Auto deduction
+Before c++17, when using `std::function` you have to correctly write the complete type of the object you want to construct. `MakeClosure` can help you omit this step.
 
 ```C++
 template <class C, class... Args>
@@ -139,8 +141,13 @@ closure2 = MakeClosure(Simple{}); // ok
 
 `std::bind` is somehow a bad design and is considered to be deprecated. But `Closure` makes up many drawbacks of `std::bind`. 
 
+### Type specified
 The type of the object return from `std::bind` is unspecified, which means you have to store it in the `std::function` to save it elsewhere. `Closure` integrates the arguments binding, and each `Closure` instance has a determined type.
 
+### Bind first N
+`std::bind` cannot bind first n arguments directly, instead you have to use `std::placeholders::_1`, `std::placeholders::_2`, ... in order. The standard didn't introduce `std::bind_front` until c++20. `Closure` provides such feature that you can simply bind first n arguments, same as `bind_front`.
+
+### No error binding
 Using `std::bind` you can even create a "callable" object that cannot call at all. Later when you try to call it, IDE and compiler will give you a lot of errors that hard to read. But using `Closure` you can never create a closure that unable to call. And the error messages are more human-friendly because it's incurred by a `static_assert`.
 
 ```C++
@@ -189,6 +196,23 @@ closure.hpp:111:28: error: static assertion failed: the given arguments don't ma
   111 |   static_assert(validator::is_invokable, "the given arguments don't match the arguments of callee");
       |                            ^~~~~~~~~~~~
 closure.hpp:111:28: note: 'closure::closureimpl::Validator<TestClosureWithPlaceHolders_Method_Test::TestBody()::<lambda(std::unique_ptr<int>)>, closure::ArgList<std::unique_ptr<int, std::default_delete<int> > >, closure::ArgList<std::unique_ptr<int, std::default_delete<int> > > >::is_invokable' evaluates to false
+```
+
+### Better SOO
+Small object optimization (SOO) for `std::function` is well supported in gcc and other well known compilers. An object applicable SOO will be stored locally, and no more dynamic memory allocating. But SOO has some restrictions. For example, in gcc, only the trivially-copyable objects can be locally-stored. Meanwhile, there is no guaranteed that the return type of the `std::bind` is trivially-copyable, even if the callable object and all the binding arguments are trivially-copyable.
+
+```C++
+auto bad_bind = std::bind([](int a, int b) { return a + b; }, 1, std::placeholders::_1);
+static_assert(std::is_trivially_copyable<decltype(bad_bind)>::value, ""); // error, bad_bind is not a trivially copyable object.
+```
+
+In `Closure`, any callable object (and its binding arguments) is enclosed in an internal type called `ClosureImpl`. If a `ClosureImpl` type satisfies `closure::closureimpl::soo::IsSmallObject`, Then the corresponding closure will be stored locally.
+
+It is guaranteed that if 1) the callable object's type is trivially-copyable and 2) for each binding arguments the type of argument is trivially-copyable (placeholders are all trivially-copyable), then the `ClosureImpl` is trivially-copyable.
+
+```C++
+// The underlying `ClosureImpl` type is trivially-copyable. 
+auto closure = MakeClosure([](int a, int b) { return a + b; }, 1);
 ```
 
 ## closure::Any

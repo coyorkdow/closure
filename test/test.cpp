@@ -368,6 +368,14 @@ TEST(TestClosure, TrivialTuple) {
   static_assert(closureimpl::soo::IsSmallObject<c3>::value, "");
   using c3tuple = typename c3::stored_types;
   static_assert(sizeof(c3tuple) == 8, "");
+
+  auto bad_bind = std::bind([](int a, int b) { return a + b; }, 1, std::placeholders::_1);
+  static_assert(!std::is_trivially_copyable<decltype(bad_bind)>::value, "");
+  static_assert(!closureimpl::soo::IsSmallObject<decltype(bad_bind)>::value, "");
+  auto _ = [](int a, int b) { return a + b; };
+  using c4 = std::remove_pointer_t<decltype(MakeClosure_ClosureImplType(_, 1))>;
+  static_assert(closureimpl::soo::IsSmallObject<c4>::value, "");
+  EXPECT_EQ(MakeClosure([](int a, int b) { return a + b; }, 1)(2), 3);
 }
 
 TEST(TestClosure, FunctionPointer) {
