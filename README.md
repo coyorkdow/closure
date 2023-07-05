@@ -12,6 +12,7 @@ Closure is header-only. To use Closure, simply copy the directory `include` into
 
 - Support almost all the methods of `std::function`, except `target_type()` (need RTTI).
 - Support arguments binding, therefore it can replace `std::bind`.
+- Support range placeholder, `PlaceHolder<I, J>()` indicates the continuous placeholders from `I` to `J`.
 - It can stores non-copyable object, like `std::unique_ptr`. An extra method `copyable()` is provided to check if the object currently stored in a `Closure` instance is copyable. If it returns `false`, then trying copy this instance (construct or assign) will get an empty `Closure`.
 - Support small object optimization. On x64 machines, any objects of the type which is trivially copyable and `sizeof` not greater than 16 will be stored locally. No dynamical memory allocated.
 - Helper function `MakeClosure` can create an instance of `Closure` and deduce its type, you can use `auto` instead of manually writing the `Closure`'s template arguments. `MakeClosure` also supports arguments binding.
@@ -81,6 +82,19 @@ auto lambda1 = [](int v1, int v2) { return v1 - v2; };
 auto closure1 = closure::MakeClosure(lambda1, closure::PlaceHolder<1>(), closure::PlaceHolder<0>());
 closure1(5, 3); // result is -2
 ```
+
+Or, you can use range placeholder. With range placeholder, not only bind the first n, the last n or middle n is also quite easy. Just use `PlaceHolder<I, J>()` to make an offset.
+
+```C++
+auto lambda = [](int a, int b, int c, int d, int e, int f, int g) {
+using std::to_string;
+return to_string(a) + to_string(b) + to_string(c) + to_string(d) + to_string(e) + to_string(f) + to_string(g);
+};
+auto closure = MakeClosure(lambda, PlaceHolder<0, 4>(), 6, 7); // bind the last two arguments
+std::string res = closure(1, 2, 3, 4, 5); // result is "1234567"
+```
+
+
 ## Compare to `std::function`
 
 ### Stores non-copyable object
@@ -144,8 +158,10 @@ closure2 = MakeClosure(Simple{}); // ok
 ### Type specified
 The type of the object return from `std::bind` is unspecified, which means you have to store it in the `std::function` to save it elsewhere. `Closure` integrates the arguments binding, and each `Closure` instance has a determined type.
 
-### Bind first N
-`std::bind` cannot bind first n arguments directly, instead you have to use `std::placeholders::_1`, `std::placeholders::_2`, ... in order. The standard didn't introduce `std::bind_front` until c++20. `Closure` provides such feature that you can simply bind first n arguments, same as `bind_front`.
+### Range binding
+`std::bind` cannot bind first n arguments directly. Instead, you have to use `std::placeholders::_1`, `std::placeholders::_2`, ... in order. The standard didn't introduce `std::bind_front` until c++20, and `std::bind_back` until c++23. `Closure` provides such feature that you can simply bind first n arguments, same as `bind_front`.
+
+Besides, with the range placeholder. `closure` can even offer a more flexible range binding than just bind front or bind back.
 
 ### No error binding
 Using `std::bind` you can even create a "callable" object that cannot call at all. Later when you try to call it, IDE and compiler will give you a lot of errors that hard to read. But using `Closure` you can never create a closure that unable to call. And the error messages are more human-friendly because it's incurred by a `static_assert`.

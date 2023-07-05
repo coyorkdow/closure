@@ -9,7 +9,11 @@
 namespace closure {
 
 template <class... Tps>
-struct ArgList {};
+struct ArgList {
+  using tuple_type = std::tuple<Tps...>;
+  using forward_tuple = std::tuple<Tps&&...>;
+  static constexpr size_t size = sizeof...(Tps);
+};
 
 template <class, class>
 struct Concat;
