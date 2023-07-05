@@ -3,8 +3,8 @@
 #include <numeric>
 #include <sstream>
 
-#include "closure.hpp"
 #include "gtest/gtest.h"
+#include "closure/closure.hpp"
 
 using namespace closure;
 

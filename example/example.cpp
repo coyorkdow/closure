@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "closure.hpp"
+#include "closure/closure.hpp"
 
 int calculate_sum(const std::string& exp) {
   int ans = 0;
