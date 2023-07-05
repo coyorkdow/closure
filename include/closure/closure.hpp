@@ -16,11 +16,6 @@
 
 namespace closure {
 
-template <size_t I>
-constexpr auto PlaceHolder() noexcept {
-  return placeholders::PH<I>{};
-}
-
 namespace closureimpl {
 
 class StoragePool;
@@ -327,6 +322,24 @@ auto MakeClosureImpl(StoragePool* dst, ArgList<ClosureArgs...>, ArgList<Converte
   return p;
 }
 
+// template <class R, size_t... I, class... ClosureArgs, class... ConvertedBounds, class Callable, class... Bounds>
+// auto ApplyFlatArgs(std::index_sequence<I...>, StoragePool* dst, ArgList<ClosureArgs...>, ArgList<ConvertedBounds...>,
+//                    Callable&& callable, std::tuple<Bounds...>&& bound_args) {
+//   static_assert(sizeof...(I) == sizeof...(Bounds), "");
+//   return MakeClosureImplImpl<R>(dst, ArgList<ClosureArgs...>{}, ArgList<ConvertedBounds...>{},
+//                                 std::forward<Callable>(callable), std::get<I>(std::move(bound_args))...);
+// }
+//
+// template <class R, class... ClosureArgs, class... ConvertedBounds, class Callable, class... Bounds,
+//           std::enable_if_t<placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
+// auto MakeClosureImpl(StoragePool* dst, ArgList<ClosureArgs...>, ArgList<ConvertedBounds...>, Callable&& callable,
+//                      Bounds&&... bound_args) {
+//   using flat_args = decltype(FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+//   ApplyFlatArgs<R>(std::make_index_sequence<std::tuple_size<flat_args>::value>{}, dst, ArgList<ClosureArgs...>{},
+//                    ArgList<ConvertedBounds...>{}, std::forward<Callable>(callable),
+//                    FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+// }
+//
 }  // namespace closureimpl
 
 template <class>
@@ -344,6 +357,35 @@ class Closure<R(Args...)> {
   using invoker_type = typename impl_base_type::invoker_type;
   using manager_type = typename impl_base_type::manager_type;
 
+  template <class Callable, class... Bounds,
+            std::enable_if_t<!placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
+  void Init(Callable&& callable, Bounds&&... bound_args) {
+    auto type_holder = closureimpl::MakeClosureImpl<R>(&storage_, args_type{}, std::forward<Callable>(callable),
+                                                       std::forward<Bounds>(bound_args)...);
+    using impl_type = std::remove_pointer_t<decltype(type_holder)>;
+    invoker_ = closureimpl::ClosureImplHandler<impl_type>::Invoke;
+    manager_ = closureimpl::ClosureImplHandler<impl_type>::Manage;
+  }
+
+  template <class Callable, class... Bounds,
+            std::enable_if_t<placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
+  void Init(Callable&& callable, Bounds&&... bound_args) {
+    using bounds_l = ArgList<Bounds...>;
+    using replaced_types = closureimpl::GenerateGettersFromClosureArgsT<bounds_l, args_type>;
+    auto type_holder =
+        closureimpl::MakeClosureImpl<R>(&storage_, args_type{}, replaced_types{}, std::forward<Callable>(callable),
+                                        std::forward<Bounds>(bound_args)...);
+    using impl_type = std::remove_pointer_t<decltype(type_holder)>;
+    invoker_ = closureimpl::ClosureImplHandler<impl_type>::Invoke;
+    manager_ = closureimpl::ClosureImplHandler<impl_type>::Manage;
+  }
+
+  template <size_t... I, class Callable, class... Bounds>
+  void ApplyFlatArgs(std::index_sequence<I...>, Callable&& callable, std::tuple<Bounds...>&& bound_args) {
+    static_assert(sizeof...(I) == sizeof...(Bounds), "");
+    Init(std::forward<Callable>(callable), std::get<I>(std::move(bound_args))...);
+  }
+
  public:
   Closure() noexcept : invoker_(nullptr), manager_(nullptr) {}
 
@@ -354,30 +396,12 @@ class Closure<R(Args...)> {
   }
 
   template <class Callable, class... Bounds,
-            std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
-                                 !placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                             int> = 0>
+            class = std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value>>
   Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
-    auto type_holder = closureimpl::MakeClosureImpl<R>(&storage_, args_type{}, std::forward<Callable>(callable),
-                                                       std::forward<Bounds>(bound_args)...);
-    using impl_type = std::remove_pointer_t<decltype(type_holder)>;
-    invoker_ = closureimpl::ClosureImplHandler<impl_type>::Invoke;
-    manager_ = closureimpl::ClosureImplHandler<impl_type>::Manage;
-  }
-
-  template <class Callable, class... Bounds,
-            std::enable_if_t<!std::is_same<std::decay_t<Callable>, Closure>::value &&
-                                 placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                             int> = 0>
-  Closure(Callable&& callable, Bounds&&... bound_args) : invoker_(nullptr), manager_(nullptr) {
-    using bounds_l = ArgList<Bounds...>;
-    using replaced_types = closureimpl::GenerateGettersFromClosureArgsT<bounds_l, args_type>;
-    auto type_holder =
-        closureimpl::MakeClosureImpl<R>(&storage_, args_type{}, replaced_types{}, std::forward<Callable>(callable),
-                                        std::forward<Bounds>(bound_args)...);
-    using impl_type = std::remove_pointer_t<decltype(type_holder)>;
-    invoker_ = closureimpl::ClosureImplHandler<impl_type>::Invoke;
-    manager_ = closureimpl::ClosureImplHandler<impl_type>::Manage;
+    using closureimpl::FlatBoundArguments;
+    using flat_args = decltype(FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+    ApplyFlatArgs(std::make_index_sequence<std::tuple_size<flat_args>::value>{}, std::forward<Callable>(callable),
+                  FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
   }
 
   void swap(Closure& rhs) noexcept {
@@ -475,9 +499,8 @@ auto MakeClosure_ClosureImplType(R (*fptr)(Args...), Bounds&&... bound_args) {
   return (type)(nullptr);
 }
 
-template <class R, class... Args, class... Bounds,
-          std::enable_if_t<placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
-auto MakeClosure_ClosureImplType(R (*fptr)(Args...), Bounds&&... bound_args) {
+template <class R, class... Args, class... Bounds>
+auto MakeClosure_ClosureImplTypeImpl(R (*fptr)(Args...), Bounds&&... bound_args) {
   using bounds_l = ArgList<Bounds...>;
   using args_l = ArgList<Args...>;
   using replaced_types = closureimpl::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
@@ -486,6 +509,21 @@ auto MakeClosure_ClosureImplType(R (*fptr)(Args...), Bounds&&... bound_args) {
   using type = decltype(closureimpl::MakeClosureImpl<R>(nullptr, closure_args{}, replaced_types{}, fptr,
                                                         std::forward<Bounds>(bound_args)...));
   return (type)(nullptr);
+}
+
+template <size_t... I, class R, class... Args, class... Bounds>
+auto ApplyFlatArgs(std::index_sequence<I...>, R (*fptr)(Args...), std::tuple<Bounds...>&& bound_args) {
+  static_assert(sizeof...(I) == sizeof...(Bounds), "");
+  return MakeClosure_ClosureImplTypeImpl(fptr, std::get<I>(std::move(bound_args))...);
+}
+
+template <class R, class... Args, class... Bounds,
+          std::enable_if_t<placeholders::HasPlaceHolder<ArgList<Bounds...>>::value, int> = 0>
+auto MakeClosure_ClosureImplType(R (*fptr)(Args...), Bounds&&... bound_args) {
+  using closureimpl::FlatBoundArguments;
+  using flat_args = decltype(FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+  return ApplyFlatArgs(std::make_index_sequence<std::tuple_size<flat_args>::value>{}, fptr,
+                       FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
 }
 
 template <class R, class... Args, class... Bounds>
@@ -512,10 +550,8 @@ auto MakeClosure_ClosureImplType(Functor&& functor, Bounds&&... bound_args) {
 }
 
 template <class Functor, class... Bounds,
-          std::enable_if_t<traits::IsSimpleFunctor<std::remove_reference_t<Functor>>::value &&
-                               placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
-                           int> = 0>
-auto MakeClosure_ClosureImplType(Functor&& functor, Bounds&&... bound_args) {
+          std::enable_if_t<traits::IsSimpleFunctor<std::remove_reference_t<Functor>>::value, int> = 0>
+auto MakeClosure_ClosureImplTypeImpl(Functor&& functor, Bounds&&... bound_args) {
   using functor_traits = traits::SimpleFunctorTraits<std::remove_reference_t<Functor>>;
   using bounds_l = ArgList<Bounds...>;
   using args_l = typename functor_traits::args_type;
@@ -525,6 +561,38 @@ auto MakeClosure_ClosureImplType(Functor&& functor, Bounds&&... bound_args) {
   using type = decltype(closureimpl::MakeClosureImpl<typename functor_traits::return_type>(
       nullptr, closure_args{}, replaced_types{}, std::forward<Functor>(functor), std::forward<Bounds>(bound_args)...));
   return (type)(nullptr);
+}
+
+template <class Method, class... Bounds, std::enable_if_t<std::is_member_function_pointer<Method>::value, int> = 0>
+auto MakeClosure_ClosureImplTypeImpl(Method method, Bounds&&... bound_args) {
+  using mfp_traits = traits::MemberFunctionPointerTraits<Method>;
+  using bounds_l = ArgList<Bounds...>;
+  using class_type = typename mfp_traits::class_type;
+  using args_l = ConcatT<ArgList<class_type*>, typename mfp_traits::args_type>;
+  using return_type = typename mfp_traits::return_type;
+  using replaced_types = closureimpl::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
+  using closure_args = ConcatT<typename closureimpl::ReplacePlaceHoldersWithGetters<bounds_l, args_l>::agents_prototype,
+                               closureimpl::RemovePrefixWeakT<bounds_l, args_l>>;
+  using type = decltype(closureimpl::MakeClosureImpl<return_type>(nullptr, closure_args{}, replaced_types{}, method,
+                                                                  std::forward<Bounds>(bound_args)...));
+  return type(nullptr);
+}
+
+template <size_t... I, class Callable, class... Bounds>
+auto ApplyFlatArgs(std::index_sequence<I...>, Callable&& callable, std::tuple<Bounds...>&& bound_args) {
+  static_assert(sizeof...(I) == sizeof...(Bounds), "");
+  return MakeClosure_ClosureImplTypeImpl(std::forward<Callable>(callable), std::get<I>(std::move(bound_args))...);
+}
+
+template <class Functor, class... Bounds,
+          std::enable_if_t<traits::IsSimpleFunctor<std::remove_reference_t<Functor>>::value &&
+                               placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
+                           int> = 0>
+auto MakeClosure_ClosureImplType(Functor&& functor, Bounds&&... bound_args) {
+  using closureimpl::FlatBoundArguments;
+  using flat_args = decltype(FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+  return ApplyFlatArgs(std::make_index_sequence<std::tuple_size<flat_args>::value>{}, std::forward<Functor>(functor),
+                       FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
 }
 
 template <class Functor, class... Bounds,
@@ -557,17 +625,10 @@ template <class Method, class... Bounds,
                                placeholders::HasPlaceHolder<ArgList<Bounds...>>::value,
                            int> = 0>
 auto MakeClosure_ClosureImplType(Method method, Bounds&&... bound_args) {
-  using mfp_traits = traits::MemberFunctionPointerTraits<Method>;
-  using bounds_l = ArgList<Bounds...>;
-  using class_type = typename mfp_traits::class_type;
-  using args_l = ConcatT<ArgList<class_type*>, typename mfp_traits::args_type>;
-  using return_type = typename mfp_traits::return_type;
-  using replaced_types = closureimpl::ReplacePlaceHoldersWithGettersT<bounds_l, args_l>;
-  using closure_args = ConcatT<typename closureimpl::ReplacePlaceHoldersWithGetters<bounds_l, args_l>::agents_prototype,
-                               closureimpl::RemovePrefixWeakT<bounds_l, args_l>>;
-  using type = decltype(closureimpl::MakeClosureImpl<return_type>(nullptr, closure_args{}, replaced_types{}, method,
-                                                                  std::forward<Bounds>(bound_args)...));
-  return type(nullptr);
+  using closureimpl::FlatBoundArguments;
+  using flat_args = decltype(FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
+  return ApplyFlatArgs(std::make_index_sequence<std::tuple_size<flat_args>::value>{}, method,
+                       FlatBoundArguments(std::forward_as_tuple(std::forward<Bounds>(bound_args)...)));
 }
 
 template <class Method, class... Bounds, std::enable_if_t<std::is_member_function_pointer<Method>::value, int> = 0>

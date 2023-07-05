@@ -3,8 +3,8 @@
 #include <numeric>
 #include <sstream>
 
-#include "gtest/gtest.h"
 #include "closure/closure.hpp"
+#include "gtest/gtest.h"
 
 using namespace closure;
 
@@ -256,6 +256,73 @@ TEST(TestAgentAndGetter, ReplacePlaceHoldersWithGetters2) {
       "");
 }
 
+TEST(TestRangePlaceHolder, TypeReplace) {
+  using namespace placeholders;
+  using namespace closureimpl;
+
+  using replaced = ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<0, 4>>>;
+  static_assert(std::is_same<ArgList<placeholders::PH<0>, placeholders::PH<1>, placeholders::PH<2>, placeholders::PH<3>,
+                                     placeholders::PH<4>>,
+                             replaced>::value,
+                "");
+}
+
+TEST(TestRangePlaceHolder, Partition) {
+  using namespace placeholders;
+  using namespace closureimpl;
+  {
+    using args = ArgList<int, RangePH<1, 3>, float, double>;
+    using partition = BoundPartition<args>;
+    static_assert(std::is_same<typename partition::former, ArgList<int>>::value, "");
+    static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>, PH<3>>>::value, "");
+    static_assert(std::is_same<typename partition::latter, ArgList<float, double>>::value, "");
+  }
+  {
+    using args = ArgList<int, double, RangePH<1, 3>>;
+    using partition = BoundPartition<args>;
+    static_assert(std::is_same<typename partition::former, ArgList<int, double>>::value, "");
+    static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>, PH<3>>>::value, "");
+    static_assert(std::is_same<typename partition::latter, ArgList<>>::value, "");
+  }
+  {
+    using args = ArgList<RangePH<1, 3>, int, double>;
+    using partition = BoundPartition<args>;
+    static_assert(std::is_same<typename partition::former, ArgList<>>::value, "");
+    static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>, PH<3>>>::value, "");
+    static_assert(std::is_same<typename partition::latter, ArgList<int, double>>::value, "");
+  }
+  {
+    using args = ArgList<RangePH<1, 3>>;
+    using partition = BoundPartition<args>;
+    static_assert(std::is_same<typename partition::former, ArgList<>>::value, "");
+    static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>, PH<3>>>::value, "");
+    static_assert(std::is_same<typename partition::latter, ArgList<>>::value, "");
+  }
+}
+
+TEST(TestRangePlaceHolder, FlatArguments) {
+  using namespace placeholders;
+  using namespace closureimpl;
+  using args_tuple0 = std::tuple<int, RangePH<1, 3>, double>;
+  args_tuple0 args{1, PlaceHolder<1, 3>(), 1.1};
+  static_assert(std::is_same<typename placeholders::ReplaceRangePlaceHolderWithPlaceHoldersT<
+                                 ArgList<int, RangePH<1, 3>, double>>::tuple_type,
+                             std::tuple<int, PH<1>, PH<2>, PH<3>, double>>::value,
+                "");
+  auto res = FlatBoundArguments(std::move(args));
+  static_assert(std::tuple_size<decltype(res)>::value == 5, "");
+  static_assert(std::is_same<decltype(res), std::tuple<int&&, PH<1>&&, PH<2>&&, PH<3>&&, double&&>>::value, "");
+  EXPECT_EQ(std::get<0>(res), 1);
+  EXPECT_DOUBLE_EQ(std::get<4>(res), 1.1);
+
+  {
+    using args_tuple = std::tuple<int>;
+    using res_type = decltype(FlatBoundArguments(std::declval<args_tuple>()));
+    static_assert(std::is_same<res_type, std::tuple<int&&>>::value, "");
+  }
+  {}
+}
+
 TEST(TestStoragePool, SmallObject) {
   closureimpl::StoragePool pool;
   pool.emplace<int>(5);
@@ -323,7 +390,7 @@ int calculate_sum(const std::string& exp) {
   return ans;
 }
 
-void test_ref(int& v) { v++; }
+void test_ref(int& v) { v++; }  // 0x7ff7b422ccf0
 
 TEST(TestValidator, InvokeFunctionPointer) {
   using validator =
@@ -650,4 +717,12 @@ TEST(TestClosureWithPlaceHolders, Any) {
   Closure<int(int, int, std::string, float)> c2(lambda, PlaceHolder<1>(), PlaceHolder<3>());
   c2 = closure;
   EXPECT_EQ(c2(1, 2, "3", 4.2), 6);
+}
+
+TEST(TestClosureWithPlaceHolders, Range) {
+  auto lambda = [](int a, int b, int c, int d, int e, int f, int g) {
+    using std::to_string;
+    return to_string(a) + to_string(b) + to_string(c) + to_string(d) + to_string(e) + to_string(f) + to_string(g);
+  };
+  //  auto closure = MakeClosure(lambda, PlaceHolder<1, 2>());
 }

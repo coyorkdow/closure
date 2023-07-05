@@ -272,8 +272,8 @@ struct ReplacePlaceHoldersWithGetters {
   using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<agents_prototype>>::type;
 };
 
-template <class Prefix, class ArgL>
-using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<Prefix, ArgL>::type;
+template <class PrePrefix, class ArgL>
+using ReplacePlaceHoldersWithGettersT = typename ReplacePlaceHoldersWithGetters<PrePrefix, ArgL>::type;
 
 template <class Prefix, class ArgL>
 struct GenerateGettersFromClosureArgs {
@@ -286,8 +286,48 @@ struct GenerateGettersFromClosureArgs {
   using type = typename ReplacePlaceHoldersWithGettersImpl<Prefix, placeholders::MakeAgentsT<agents_prototype>>::type;
 };
 
-template <class Prefix, class ArgL>
-using GenerateGettersFromClosureArgsT = typename GenerateGettersFromClosureArgs<Prefix, ArgL>::type;
+template <class PrePrefix, class ArgL>
+using GenerateGettersFromClosureArgsT = typename GenerateGettersFromClosureArgs<PrePrefix, ArgL>::type;
+
+template <class... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
+auto FlatBoundArguments(std::tuple<Args...>&& args) noexcept ->
+    typename placeholders::ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<Args...>>::forward_tuple;
+
+auto FlatBoundArguments(std::tuple<>&& args) noexcept { return std::tuple<>{}; }
+
+template <size_t... I, class... Args1, size_t... J, class... Args2>
+auto ConcatTuple(std::index_sequence<I...>, std::index_sequence<J...>, std::tuple<Args1...>&& args1,
+                 std::tuple<Args2...>&& args2) noexcept {
+  static_assert(sizeof...(I) == sizeof...(Args1), "");
+  static_assert(sizeof...(J) == sizeof...(Args2), "");
+  return std::forward_as_tuple(std::move(std::get<I>(std::move(args1)))...,
+                               std::move(std::get<J>(std::move(args2)))...);
+}
+
+template <class... Args, size_t... I, size_t... J, size_t... K>
+auto ProcessPartition(std::index_sequence<I...>, std::index_sequence<J...>, std::tuple<Args...>&& args,
+                      ArgList<placeholders::PH<K>...>) noexcept {
+  constexpr size_t partition = sizeof...(K) == 0 ? 0 : 1;
+  static_assert(sizeof...(I) + sizeof...(J) + partition == sizeof...(Args), "");
+  auto former_part = std::forward_as_tuple(std::get<I>(std::move(std::move(args)))..., PlaceHolder<K>()...);
+  auto latter_part =
+      FlatBoundArguments(std::forward_as_tuple(std::move(std::get<J + sizeof...(I) + partition>(std::move(args)))...));
+  return ConcatTuple(std::make_index_sequence<sizeof...(I) + sizeof...(K)>{},
+                     std::make_index_sequence<std::tuple_size<decltype(latter_part)>::value>{}, std::move(former_part),
+                     std::move(latter_part));
+}
+
+template <class... Args, std::enable_if_t<(sizeof...(Args) > 0), int>>
+auto FlatBoundArguments(std::tuple<Args...>&& args) noexcept ->
+    typename placeholders::ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<Args...>>::forward_tuple {
+  using namespace placeholders;
+  using args_list = ArgList<Args...>;
+  using former = typename BoundPartition<args_list>::former;
+  using latter = typename BoundPartition<args_list>::latter;
+  using range_placeholders = typename BoundPartition<args_list>::range_placeholders;
+  return ProcessPartition(std::make_index_sequence<former::size>{}, std::make_index_sequence<latter::size>{},  //
+                          std::move(args), range_placeholders{});
+}
 
 }  // namespace closureimpl
 

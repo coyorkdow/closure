@@ -38,5 +38,6 @@
 # Build
 build/
 cmake-build-debug/
+cmake-build-debug-gcc
 cmake-build-release/
 cmake-build-release-gcc/
