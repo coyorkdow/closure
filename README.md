@@ -13,7 +13,7 @@ Closure is header-only. To use Closure, simply copy the directory `include` into
 - Support almost all the methods of `std::function`, except `target_type()` (need RTTI).
 - Support arguments binding, therefore it can replace `std::bind`.
 - Support range placeholder, `PlaceHolder<I, J>()` indicates a placeholders sequence from `I` to `J`.
-- It can stores non-copyable object, like `std::unique_ptr`. An extra method `copyable()` is provided to check if the object currently stored in a `Closure` instance is copyable. If it returns `false`, then trying copy this instance (construct or assign) will get an empty `Closure`.
+- It can store non-copyable object, like `std::unique_ptr`. An extra method `copyable()` is provided to check if the object currently stored in a `Closure` instance is copyable. If it returns `false`, then trying copy this instance (construct or assign) will get an empty `Closure`.
 - Support small object optimization. On x64 machines, any objects of the type which is trivially copyable and `sizeof` not greater than 16 will be stored locally. No dynamical memory allocated.
 - Helper function `MakeClosure` can create an instance of `Closure` and deduce its type, you can use `auto` instead of manually writing the `Closure`'s template arguments. `MakeClosure` also supports arguments binding.
 
