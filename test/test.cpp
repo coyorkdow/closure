@@ -742,4 +742,8 @@ TEST(TestClosureWithPlaceHolders, Range) {
   auto closure = MakeClosure(lambda, PlaceHolder<0, 4>(), 6, 7);
   std::string res = closure(1, 2, 3, 4, 5);
   EXPECT_EQ(res, std::string{"1234567"});
+
+  Closure<std::string(closure::Any, int, int, int)> closure2{lambda, PlaceHolder<1, 3>(), 8, 9, 10, 11};
+  res = closure2(std::vector<int>{}/*any argument*/, 5, 6, 7);
+  EXPECT_EQ(res, "567891011");
 }
