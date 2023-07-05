@@ -298,6 +298,13 @@ TEST(TestRangePlaceHolder, Partition) {
     static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>, PH<3>>>::value, "");
     static_assert(std::is_same<typename partition::latter, ArgList<>>::value, "");
   }
+  {
+    using args = ArgList<RangePH<1, 2>&&>;
+    using partition = BoundPartition<args>;
+    static_assert(std::is_same<typename partition::former, ArgList<>>::value, "");
+    static_assert(std::is_same<typename partition::range_placeholders, ArgList<PH<1>, PH<2>>>::value, "");
+    static_assert(std::is_same<typename partition::latter, ArgList<>>::value, "");
+  }
 }
 
 TEST(TestRangePlaceHolder, FlatArguments) {
@@ -320,7 +327,15 @@ TEST(TestRangePlaceHolder, FlatArguments) {
     using res_type = decltype(FlatBoundArguments(std::declval<args_tuple>()));
     static_assert(std::is_same<res_type, std::tuple<int&&>>::value, "");
   }
-  {}
+  {
+    using res_type = decltype(FlatBoundArguments(std::forward_as_tuple(RangePH<1, 2>{})));
+    using res_type2 = typename ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<1, 2>&&>>::forward_tuple;
+    static_assert(std::is_same<res_type, res_type2>::value, "");
+    static_assert(
+        std::is_same<ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<1, 2>&&>>, ArgList<PH<1>, PH<2>>>::value,
+        "");
+    static_assert(std::is_same<res_type, std::tuple<PH<1>&&, PH<2>&&>>::value, "");
+  }
 }
 
 TEST(TestStoragePool, SmallObject) {
@@ -724,5 +739,7 @@ TEST(TestClosureWithPlaceHolders, Range) {
     using std::to_string;
     return to_string(a) + to_string(b) + to_string(c) + to_string(d) + to_string(e) + to_string(f) + to_string(g);
   };
-  //  auto closure = MakeClosure(lambda, PlaceHolder<1, 2>());
+  auto closure = MakeClosure(lambda, PlaceHolder<0, 4>(), 6, 7);
+  std::string res = closure(1, 2, 3, 4, 5);
+  EXPECT_EQ(res, std::string{"1234567"});
 }

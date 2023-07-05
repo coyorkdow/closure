@@ -39,6 +39,8 @@ struct HasRangePlaceHolder : std::false_type {};
 
 template <size_t I, size_t J, class... Tps>
 struct HasRangePlaceHolder<ArgList<RangePH<I, J>, Tps...>> : std::true_type {};
+template <size_t I, size_t J, class... Tps>
+struct HasRangePlaceHolder<ArgList<RangePH<I, J>&&, Tps...>> : std::true_type {};
 
 template <class F, class... Os>
 struct HasRangePlaceHolder<ArgList<F, Os...>> : HasRangePlaceHolder<ArgList<Os...>> {};
@@ -51,9 +53,19 @@ struct ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I, I + 1>, Tps...
   using type =
       ConcatT<ArgList<PH<I>, PH<I + 1>>, typename ReplaceRangePlaceHolderWithPlaceHolders<ArgList<Tps...>>::type>;
 };
+template <size_t I, class... Tps>
+struct ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I, I + 1>&&, Tps...>> {
+  using type =
+      ConcatT<ArgList<PH<I>, PH<I + 1>>, typename ReplaceRangePlaceHolderWithPlaceHolders<ArgList<Tps...>>::type>;
+};
 
 template <size_t I, size_t J, class... Tps>
 struct ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I, J>, Tps...>> {
+  using type = ConcatT<ArgList<PH<I>>,
+                       typename ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I + 1, J>, Tps...>>::type>;
+};
+template <size_t I, size_t J, class... Tps>
+struct ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I, J>&&, Tps...>> {
   using type = ConcatT<ArgList<PH<I>>,
                        typename ReplaceRangePlaceHolderWithPlaceHolders<ArgList<RangePH<I + 1, J>, Tps...>>::type>;
 };
@@ -89,6 +101,14 @@ struct BoundPartitionImpl<ArgList<Before...>, ArgList<RangePH<I, J>, After...>,
   using latter = ArgList<After...>;
 };
 
+template <class... Before, size_t I, size_t J, class... After>
+struct BoundPartitionImpl<ArgList<Before...>, ArgList<RangePH<I, J>&&, After...>,
+                          std::enable_if_t<!HasRangePlaceHolder<ArgList<Before...>>::value>> {
+  using former = ArgList<Before...>;
+  using range_placeholders = ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<I, J>>>;
+  using latter = ArgList<After...>;
+};
+
 template <class... Before>
 struct BoundPartitionImpl<ArgList<Before...>, ArgList<>,
                           std::enable_if_t<!HasRangePlaceHolder<ArgList<Before...>>::value>> {
@@ -99,6 +119,13 @@ struct BoundPartitionImpl<ArgList<Before...>, ArgList<>,
 
 template <size_t I, size_t J, class... After>
 struct BoundPartitionImpl<ArgList<RangePH<I, J>>, ArgList<After...>> {
+  using former = ArgList<>;
+  using range_placeholders = ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<I, J>>>;
+  using latter = ArgList<After...>;
+};
+
+template <size_t I, size_t J, class... After>
+struct BoundPartitionImpl<ArgList<RangePH<I, J>&&>, ArgList<After...>> {
   using former = ArgList<>;
   using range_placeholders = ReplaceRangePlaceHolderWithPlaceHoldersT<ArgList<RangePH<I, J>>>;
   using latter = ArgList<After...>;
