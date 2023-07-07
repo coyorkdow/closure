@@ -1,6 +1,7 @@
 /*
  * online example. load this file into a compiler explorer page.
  */
+#include <https://raw.githubusercontent.com/coyorkdow/closure/main/include/closure/empty/empty.hpp>
 #include <https://raw.githubusercontent.com/coyorkdow/closure/main/include/closure/util.hpp>
 #include <https://raw.githubusercontent.com/coyorkdow/closure/main/include/closure/traits.hpp>
 #include <https://raw.githubusercontent.com/coyorkdow/closure/main/include/closure/bind.hpp>
