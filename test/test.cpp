@@ -2,11 +2,16 @@
 #include <memory>
 #include <numeric>
 #include <sstream>
+#include <string>
 
 #include "closure/closure.hpp"
 #include "gtest/gtest.h"
 
 using namespace closure;
+
+static_assert(std::is_trivially_copyable<tuple::TrivialTuple<>>::value, "");
+static_assert(std::is_trivially_copyable<tuple::TrivialTuple<int>>::value, "");
+static_assert(std::is_trivially_copyable<tuple::TrivialTuple<int, double, std::string*>>::value, "");
 
 TEST(TestArg, Main) {
   using namespace closureimpl;
@@ -744,6 +749,6 @@ TEST(TestClosureWithPlaceHolders, Range) {
   EXPECT_EQ(res, std::string{"1234567"});
 
   Closure<std::string(closure::Any, int, int, int)> closure2{lambda, PlaceHolder<1, 3>(), 8, 9, 10, 11};
-  res = closure2(std::vector<int>{}/*any argument*/, 5, 6, 7);
+  res = closure2(std::vector<int>{} /*any argument*/, 5, 6, 7);
   EXPECT_EQ(res, "567891011");
 }
