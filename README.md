@@ -17,6 +17,8 @@ Closure is header-only. To use Closure, simply copy the directory `include` into
 - Support small object optimization. On x64 machines, any objects of the type which is trivially copyable and `sizeof` not greater than 16 will be stored locally. No dynamical memory allocated.
 - Helper function `MakeClosure` can create an instance of `Closure` and deduce its type, you can use `auto` instead of manually writing the `Closure`'s template arguments. `MakeClosure` also supports arguments binding.
 
+Try it online through the Compiler Explorer https://godbolt.org/z/KrGejazf7
+
 Read more details in
 
 [Compare to std::function](#compare-to-stdfunction)
