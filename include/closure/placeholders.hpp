@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "closure/traits.hpp"
-#include "closure/trivial_tuple.hpp"
-#include "closure/util.hpp"
+#include "traits.hpp"
+#include "trivial_tuple.hpp"
+#include "util.hpp"
 
 namespace closure {
 

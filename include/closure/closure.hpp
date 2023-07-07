@@ -9,10 +9,10 @@
 #include <new>
 #include <tuple>
 
-#include "closure/bind.hpp"
-#include "closure/placeholders.hpp"
-#include "closure/traits.hpp"
-#include "closure/trivial_tuple.hpp"
+#include "bind.hpp"
+#include "placeholders.hpp"
+#include "traits.hpp"
+#include "trivial_tuple.hpp"
 
 namespace closure {
 

@@ -6,7 +6,7 @@
 
 #include <type_traits>
 
-#include "closure/util.hpp"
+#include "util.hpp"
 
 namespace closure {
 

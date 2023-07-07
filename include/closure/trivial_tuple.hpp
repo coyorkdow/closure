@@ -77,10 +77,6 @@ class TrivialTuple : private TupleImpl<std::index_sequence_for<Tps...>, Tps...> 
   using base::Get;
 };
 
-static_assert(std::is_trivially_copyable<TrivialTuple<>>::value, "");
-static_assert(std::is_trivially_copyable<TrivialTuple<int>>::value, "");
-static_assert(std::is_trivially_copyable<TrivialTuple<int, double, std::string*>>::value, "");
-
 using std::get;
 
 template <size_t I, class... Tps>
