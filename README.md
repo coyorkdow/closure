@@ -89,11 +89,11 @@ Or, you can use range placeholder. With range placeholder, not only bind the fir
 
 ```C++
 auto lambda = [](int a, int b, int c, int d, int e, int f, int g) {
-using std::to_string;
-return to_string(a) + to_string(b) + to_string(c) + to_string(d) + to_string(e) + to_string(f) + to_string(g);
+  using std::to_string;
+  return to_string(a) + to_string(b) + to_string(c) + to_string(d) + to_string(e) + to_string(f) + to_string(g);
 };
-auto closure = MakeClosure(lambda, PlaceHolder<0, 4>(), 6, 7); // bind the last two arguments
-std::string res = closure(1, 2, 3, 4, 5); // result is "1234567"
+auto closure1 = closure::MakeClosure(lambda, closure::PlaceHolder<0, 4>(), 6, 7); // bind the last two arguments
+std::string res = closure1(1, 2, 3, 4, 5); // result is "1234567"
 ```
 
 
